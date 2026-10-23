@@ -4,8 +4,9 @@
  * 這支程式綁在你的 Google 試算表上，只負責「讀寫資料」，不顯示任何畫面。
  * 甘特圖網頁放在 GitHub Pages，透過這裡的 doPost 存取資料。
  *
- * 密碼「不寫在程式碼裡」：請到 Apps Script 左側「專案設定 ⚙️」→「指令碼屬性」
- * 新增屬性名稱 PASSWORD，值填你們要用的密碼。
+ * 密碼「不寫在程式碼裡」：請到 Apps Script 左側「專案設定 ⚙️」→「指令碼屬性」新增：
+ *   PASSWORD   可以看也可以改（你和老婆用）
+ * 瀏覽連結的鑰匙 VIEW_KEY 不用自己設：在網頁按「分享瀏覽連結」時自動產生。
  */
 
 const SHEET_NAME = '時程';
@@ -46,8 +47,8 @@ function setup() {
     ]);
   }
 
-  const pw = PropertiesService.getScriptProperties().getProperty('PASSWORD');
-  Logger.log(pw
+  const props = PropertiesService.getScriptProperties();
+  Logger.log(props.getProperty('PASSWORD')
     ? '✅ 設定完成，密碼已設定。'
     : '⚠️ 設定完成，但還沒設密碼：請到「專案設定 → 指令碼屬性」新增 PASSWORD。');
 }
@@ -61,8 +62,8 @@ function doGet() {
 
 /**
  * 所有請求都用 POST，body 是 JSON 文字：
- *   { password, action: 'list' | 'update' | 'add' | 'delete', ... }
- * 密碼放在 body，不放在網址上。
+ *   { password?, key?, action: 'list' | 'update' | 'add' | 'delete' | 'shareKey', ... }
+ * password = 修改密碼；key = 分享連結裡的瀏覽鑰匙（只能 list）。
  */
 function doPost(e) {
   let req;
@@ -72,14 +73,19 @@ function doPost(e) {
     return json_({ ok: false, error: '格式錯誤' });
   }
 
-  if (!checkPassword_(req.password)) {
+  const role = roleOf_(req.password, req.key);
+  if (!role) {
     Utilities.sleep(1500); // 拖慢猜密碼的速度
     return json_({ ok: false, error: 'AUTH' });
+  }
+  if (req.action !== 'list' && role !== 'edit') {
+    return json_({ ok: false, error: 'READONLY' });
   }
 
   try {
     switch (req.action) {
-      case 'list':   return json_({ ok: true, tasks: listTasks_() });
+      case 'list':   return json_({ ok: true, role, tasks: listTasks_() });
+      case 'shareKey': return json_({ ok: true, key: shareKey_(!!req.renew) });
       case 'update': return json_({ ok: true, task: withLock_(() => updateTask_(req.id, req.fields)) });
       case 'add':    return json_({ ok: true, task: withLock_(() => addTask_(req.fields)) });
       case 'delete': return json_({ ok: true, id: withLock_(() => deleteTask_(req.id)) });
@@ -262,9 +268,25 @@ function validDate_(s) {
 
 function clamp_(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 
-function checkPassword_(input) {
-  const pw = PropertiesService.getScriptProperties().getProperty('PASSWORD');
-  return !!pw && typeof input === 'string' && input === pw;
+/** 回傳 'edit'（可修改）、'view'（只能看）或 null（都不對） */
+function roleOf_(password, key) {
+  const props = PropertiesService.getScriptProperties();
+  const pw = props.getProperty('PASSWORD');
+  const viewKey = props.getProperty('VIEW_KEY');
+  if (pw && typeof password === 'string' && password && password === pw) return 'edit';
+  if (viewKey && typeof key === 'string' && key && key === viewKey) return 'view';
+  return null;
+}
+
+/** 取得分享連結用的瀏覽鑰匙；沒有或要求換新時產生新的（舊連結隨即失效） */
+function shareKey_(renew) {
+  const props = PropertiesService.getScriptProperties();
+  let key = props.getProperty('VIEW_KEY');
+  if (!key || renew) {
+    key = Utilities.getUuid().replace(/-/g, '').slice(0, 20);
+    props.setProperty('VIEW_KEY', key);
+  }
+  return key;
 }
 
 function withLock_(fn) {
