@@ -77,6 +77,18 @@
   .tl-row.done .tl-name { color: var(--muted); text-decoration: line-through; }
   .tl-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #btn-list.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  /* 唯讀（設計師）模式 */
+  body.ro .edit-only { display: none !important; }
+  body:not(.ro) .view-only { display: none !important; }
+  #login .back { display: block; text-align: center; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  #share-dlg form { padding: 20px; display: grid; gap: 12px; }
+  #share-dlg p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+  #share-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  .ro-badge { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: #eef3f8; color: #3c5a7a; border: 1px solid #d5e1ec; }
+  header select.who { width: auto; padding: 7px 10px; background: var(--card); }
+  fieldset#f-set { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
+  fieldset#f-set:disabled input, fieldset#f-set:disabled select, fieldset#f-set:disabled textarea { background: #faf8f5; color: var(--ink); opacity: 1; }
+  #empty-filter { padding: 40px 16px; text-align: center; color: var(--muted); }
   .btn-ms { color: var(--ms); border-color: color-mix(in srgb, var(--ms) 45%, var(--line)); font-weight: 600; }
   .btn-ms:hover { border-color: var(--ms); }
   .gantt .bar-wrapper.flash .bar { stroke: var(--accent); stroke-width: 3; }
@@ -154,27 +166,31 @@
 <section id="login" class="hidden">
   <form id="login-form" autocomplete="on">
     <h1>🏠 裝潢時程</h1>
-    <p>請輸入密碼</p>
+    <p id="login-tip">請輸入密碼</p>
     <input type="text" name="username" value="reno-gantt" autocomplete="username" class="hidden" aria-hidden="true">
     <input id="pw" type="password" autocomplete="current-password" placeholder="密碼" required>
     <button class="btn primary block" type="submit">進入</button>
     <div class="err" id="login-err"></div>
+    <a href="#" class="back hidden" id="login-back">← 不登入，回去瀏覽</a>
   </form>
 </section>
 
 <!-- 主畫面 -->
 <section id="app" class="hidden">
   <header>
-    <h1>🏠 裝潢時程</h1>
+    <h1>🏠 裝潢時程 <span id="ro-badge" class="ro-badge hidden">瀏覽模式</span></h1>
+    <select id="f-who" class="who" title="只看某個人的項目" aria-label="只看"></select>
     <div class="seg" id="views">
       <button data-v="Day">日</button><button data-v="Week" class="on">週</button><button data-v="Month">月</button>
     </div>
     <button class="btn" id="btn-list" title="顯示／隱藏工項清單">☰ 清單</button>
     <button class="btn" id="btn-today">今天</button>
     <button class="btn" id="btn-reload" title="重新載入">⟳</button>
-    <button class="btn primary" id="btn-add">＋ 工項</button>
-    <button class="btn btn-ms" id="btn-add-ms">＋ 注意事項</button>
-    <button class="btn" id="btn-logout" title="登出">登出</button>
+    <button class="btn primary edit-only" id="btn-add">＋ 工項</button>
+    <button class="btn btn-ms edit-only" id="btn-add-ms">＋ 注意事項</button>
+    <button class="btn edit-only" id="btn-share" title="產生給設計師的瀏覽連結">🔗 分享瀏覽連結</button>
+    <button class="btn edit-only" id="btn-logout" title="登出">登出</button>
+    <button class="btn primary view-only" id="btn-login">🔒 登入修改</button>
   </header>
   <main>
     <div class="legend" id="legend"></div>
@@ -186,9 +202,11 @@
       <div id="gantt-area">
         <div id="gantt"></div>
         <div id="empty" class="hidden">還沒有任何項目，按「＋ 工項」或「＋ 注意事項」開始吧</div>
+        <div id="empty-filter" class="hidden">這個人目前沒有項目，上方「只看」改回「全部」就能看到全部</div>
       </div>
     </div>
-    <p class="hint">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，過期未完成會變紅，在清單打勾即完成。</p>
+    <p class="hint edit-only">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，過期未完成會變紅，在清單打勾即完成。</p>
+    <p class="hint ro-only hidden">點色條、菱形或左側清單可以看詳細內容。◆ 是注意事項，紅色代表已過期還沒完成。</p>
   </main>
 </section>
 
@@ -196,6 +214,7 @@
 <dialog id="dlg">
   <form id="edit-form" method="dialog">
     <h2 id="dlg-title">編輯工項</h2>
+    <fieldset id="f-set">
     <label><span id="l-name">工項名稱</span><input type="text" id="f-name" required maxlength="60"></label>
     <div class="row2">
       <label><span id="l-start">開始日</span><input type="date" id="f-start" required></label>
@@ -204,17 +223,33 @@
         <input type="checkbox" id="f-done" class="tl-check">已完成</span></label>
     </div>
     <div class="row2">
-      <label><span id="l-crew">工班</span><input type="text" id="f-crew" list="crew-list" maxlength="30"></label>
+      <label><span id="l-crew">工班</span>
+        <select id="f-crew-sel"></select>
+        <input type="text" id="f-crew-new" maxlength="30" placeholder="輸入新的名稱" class="hidden"></label>
       <label class="only-task">進度（%）<input type="number" id="f-progress" min="0" max="100" step="5"></label>
     </div>
-    <datalist id="crew-list"></datalist>
     <label><span id="l-deps">前置工項（要先完成的）</span><div class="deps" id="f-deps"></div></label>
     <label>備註<textarea id="f-note" rows="2" maxlength="300"></textarea></label>
+    </fieldset>
     <div class="actions">
-      <button class="btn danger" type="button" id="btn-del">刪除</button>
+      <button class="btn danger edit-only" type="button" id="btn-del">刪除</button>
       <span class="spacer"></span>
       <button class="btn" type="button" id="btn-cancel">取消</button>
-      <button class="btn primary" type="submit" id="btn-save">儲存</button>
+      <button class="btn primary edit-only" type="submit" id="btn-save">儲存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="share-dlg">
+  <form method="dialog">
+    <h2 style="margin:0;font-size:18px">🔗 分享瀏覽連結</h2>
+    <p>拿到這個連結的人打開就能看時程，但不能修改。傳給設計師就好，不用給密碼。</p>
+    <input type="text" id="share-link" readonly>
+    <div class="actions">
+      <button class="btn" type="button" id="btn-renew" title="舊連結會失效">換新連結</button>
+      <span class="spacer"></span>
+      <button class="btn" type="submit">關閉</button>
+      <button class="btn primary" type="button" id="btn-copy">複製連結</button>
     </div>
   </form>
 </dialog>
@@ -238,9 +273,21 @@ const store = {
 const PW_KEY = 'reno-gantt-pw';
 const VIEW_KEY = 'reno-gantt-view';
 const LIST_KEY = 'reno-gantt-list';
+const WHO_KEY = 'reno-gantt-who';
+const VKEY_KEY = 'reno-gantt-viewkey';
 const $ = (s) => document.querySelector(s);
 
 let password = store.get(PW_KEY) || '';
+let viewKey = store.get(VKEY_KEY) || '';
+// 分享連結長這樣：…/reno-gantt/#v=鑰匙。讀進來後就把網址上的鑰匙拿掉
+{
+  const m = /^#v=([A-Za-z0-9]+)$/.exec(location.hash);
+  if (m) {
+    viewKey = m[1];
+    store.set(VKEY_KEY, viewKey);
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+}
 let tasks = [];
 let gantt = null;
 let editingId = null;
@@ -248,6 +295,16 @@ let viewMode = store.get(VIEW_KEY) || 'Week';
 let saveChain = Promise.resolve();
 let pendingWrites = 0;
 const dateTimers = {};
+let role = 'edit';                       // 'edit' 你和老婆；'view' 設計師
+let who = store.get(WHO_KEY) || '';      // 只看某個人（空白 = 全部）
+let shown = [];                          // 套用「只看」後畫在圖上的項目
+
+function applyRole(r) {
+  role = r === 'view' ? 'view' : 'edit';
+  document.body.classList.toggle('ro', role === 'view');
+  $('#ro-badge').classList.toggle('hidden', role !== 'view');
+  document.querySelectorAll('.ro-only').forEach((el) => el.classList.toggle('hidden', role !== 'view'));
+}
 
 /* ---------- API ---------- */
 async function api(action, payload = {}) {
@@ -255,13 +312,20 @@ async function api(action, payload = {}) {
     method: 'POST',
     // 用 text/plain 避免 CORS 預檢，Apps Script 才收得到
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ password, action, ...payload }),
+    body: JSON.stringify({ password, key: viewKey, action, ...payload }),
   });
   const data = await res.json();
   if (!data.ok) {
-    if (data.error === 'AUTH') { logout('密碼錯誤或已變更，請重新輸入'); }
+    if (data.error === 'AUTH') {
+      const msg = password ? '密碼錯誤或已變更，請重新輸入' : '這個瀏覽連結已失效，請跟屋主要新的連結';
+      password = ''; store.del(PW_KEY);
+      viewKey = ''; store.del(VKEY_KEY);
+      showLogin(msg);
+    }
+    if (data.error === 'READONLY') throw new Error('瀏覽模式不能修改');
     throw new Error(data.error || '發生錯誤');
   }
+  if (action === 'list') applyRole(data.role);
   return data;
 }
 
@@ -282,24 +346,75 @@ $('#login-form').addEventListener('submit', async (e) => {
   password = $('#pw').value;
   $('#login-err').textContent = '';
   const btn = e.submitter; if (btn) btn.disabled = true;
+  const keyBefore = viewKey;
   try {
     const d = await api('list');
+    if (d.role !== 'edit') {
+      // 密碼不對，但瀏覽連結還有效：留在登入畫面提示
+      password = '';
+      $('#login-err').textContent = '密碼錯誤';
+      return;
+    }
     store.set(PW_KEY, password);
     showApp(d.tasks);
+    toast('已登入，可以修改了');
   } catch (err) {
+    if (keyBefore && !viewKey) return; // 連結失效的訊息已經顯示
     $('#login-err').textContent = err.message === 'AUTH' ? '密碼錯誤' : '連線失敗：' + err.message;
   } finally { if (btn) btn.disabled = false; }
 });
 
-function logout(msg) {
-  password = '';
-  store.del(PW_KEY);
+function showLogin(msg) {
   $('#app').classList.add('hidden');
   $('#login').classList.remove('hidden');
   $('#pw').value = '';
   $('#login-err').textContent = msg || '';
+  $('#login-back').classList.toggle('hidden', !viewKey);
+  $('#login-tip').textContent = viewKey ? '輸入密碼就能修改時程' : '請輸入密碼';
+  setTimeout(() => $('#pw').focus(), 0);
+}
+$('#login-back').onclick = (e) => { e.preventDefault(); $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); };
+$('#btn-login').onclick = () => showLogin('');
+
+/** 登出：有瀏覽連結就回到瀏覽模式，沒有就回登入畫面 */
+async function logout() {
+  password = '';
+  store.del(PW_KEY);
+  if (viewKey) {
+    try { render((await api('list')).tasks); toast('已登出，目前是瀏覽模式'); return; } catch (e) { /* 連結失效時 api 會處理 */ return; }
+  }
+  showLogin('');
 }
 $('#btn-logout').onclick = () => logout();
+
+/* ---------- 分享瀏覽連結 ---------- */
+const shareUrl = (k) => location.origin + location.pathname + '#v=' + k;
+async function openShare(renew = false) {
+  try {
+    const { key } = await api('shareKey', { renew });
+    viewKey = key; store.set(VKEY_KEY, key);   // 自己也存一份，登出後還能瀏覽
+    $('#share-link').value = shareUrl(key);
+    if (!$('#share-dlg').open) $('#share-dlg').showModal();
+    $('#share-link').select();
+    if (renew) toast('已換新連結，舊連結失效了');
+  } catch (e) { toast('取得連結失敗：' + e.message, true); }
+}
+$('#btn-share').onclick = () => openShare(false);
+$('#btn-renew').onclick = () => {
+  const b = $('#btn-renew');
+  if (!b.dataset.armed) {
+    b.dataset.armed = '1'; b.textContent = '確定？舊連結會失效';
+    setTimeout(() => { delete b.dataset.armed; b.textContent = '換新連結'; }, 3000);
+    return;
+  }
+  delete b.dataset.armed; b.textContent = '換新連結';
+  openShare(true);
+};
+$('#btn-copy').onclick = async () => {
+  const text = $('#share-link').value;
+  try { await navigator.clipboard.writeText(text); toast('已複製，貼給設計師就可以了'); }
+  catch { $('#share-link').select(); toast('請長按或 Ctrl+C 複製'); }
+};
 
 /* ---------- 畫面 ---------- */
 function showApp(list) {
@@ -337,19 +452,24 @@ function colorFor(crew) {
 
 function render(list) {
   tasks = list.slice().sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id, undefined, { numeric: true }));
-  const has = tasks.length > 0;
-  $('#empty').classList.toggle('hidden', has);
+  renderWho();
+  shown = who ? tasks.filter((t) => t.crew === who) : tasks;
+  const ids = new Set(shown.map((t) => t.id));
+  const has = shown.length > 0;
+  $('#empty').classList.toggle('hidden', tasks.length > 0);
+  $('#empty-filter').classList.toggle('hidden', has || !tasks.length);
   $('#gantt').classList.toggle('hidden', !has);
   renderLegend();
   if (!has) { gantt = null; $('#gantt').innerHTML = ''; renderList(); return; }
 
-  const gTasks = tasks.map((t) => ({
+  const gTasks = shown.map((t) => ({
     id: t.id,
     name: t.name,
     start: t.start,
     end: isMs(t) ? t.start : t.end,
     progress: isMs(t) ? 0 : t.progress,
-    dependencies: t.dependencies,
+    // 篩選後被藏起來的項目不畫箭頭
+    dependencies: t.dependencies.split(',').filter((d) => ids.has(d)).join(','),
     custom_class: isMs(t)
       ? { done: 'ms-done', late: 'ms-late', open: 'ms' }[msState(t)]
       : t.progress >= 100 ? 'done' : colorFor(t.crew),
@@ -362,8 +482,9 @@ function render(list) {
     today_button: false,
     scroll_to: ymd(addDays(new Date(), -3)),
     // 至少留 360px 高，點色條跳出的小視窗才不會被切掉
-    container_height: Math.max(360, tasks.length * 44 + 110),
+    container_height: Math.max(360, shown.length * 44 + 110),
     move_dependencies: true,
+    readonly: role === 'view',
     bar_height: 28,
     padding: 16,
     popup_on: 'click',
@@ -427,6 +548,7 @@ function drawDiamonds() {
 }
 
 async function toggleDone(id) {
+  if (role === 'view') return;
   const t = tasks.find((x) => x.id === id);
   if (!t) return;
   t.progress = t.progress >= 100 ? 0 : 100;
@@ -439,16 +561,16 @@ const SWATCH = { c0: '#c0663a', c1: '#5f8a55', c2: '#4a6f9e', c3: '#b08a2e', c4:
 
 function renderList() {
   const inner = $('#tl-inner');
-  $('#tl-count').textContent = tasks.length ? `${tasks.length} 項` : '';
-  if (!tasks.length) { inner.innerHTML = ''; return; }
-  inner.innerHTML = tasks.map((t) => {
+  $('#tl-count').textContent = shown.length ? `${shown.length} 項` : '';
+  if (!shown.length) { inner.innerHTML = ''; return; }
+  inner.innerHTML = shown.map((t) => {
     if (isMs(t)) {
       const st = msState(t);
       const c = { done: 'var(--ms-done)', late: 'var(--ms-late)', open: 'var(--ms)' }[st];
       return `<div class="tl-row${st === 'done' ? ' done' : ''}${st === 'late' ? ' late' : ''}" data-id="${esc(t.id)}" title="${esc(t.name)}">
       <span class="tl-diamond" style="--c:${c}"></span>
-      <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${esc(msMeta(t))}</div></div>
-      <input type="checkbox" class="tl-check" data-done="${esc(t.id)}" ${st === 'done' ? 'checked' : ''} title="完成">
+      <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${t.crew ? `<span class="tl-crew">${esc(t.crew)} · </span>` : ''}${esc(msMeta(t))}</div></div>
+      <input type="checkbox" class="tl-check" data-done="${esc(t.id)}" ${st === 'done' ? 'checked' : ''} ${role === 'view' ? 'disabled' : ''} title="完成">
     </div>`;
     }
     const done = t.progress >= 100;
@@ -469,7 +591,7 @@ function syncListScroll() {
 
 $('#tl-inner').addEventListener('click', (e) => {
   const doneId = e.target.closest('[data-done]')?.dataset.done;
-  if (doneId) { e.preventDefault(); toggleDone(doneId); return; }
+  if (doneId) { if (role !== 'view') { e.preventDefault(); toggleDone(doneId); } else e.preventDefault(); return; }
   const row = e.target.closest('.tl-row');
   if (row) { focusTask(row.dataset.id); openEdit(row.dataset.id); }
 });
@@ -501,17 +623,29 @@ $('#btn-list').onclick = () => setListOpen($('#tlist').classList.contains('colla
 }
 
 function renderLegend() {
-  const crews = [...new Set(tasks.filter((t) => !isMs(t)).map((t) => t.crew).filter(Boolean))];
-  const allCrews = [...new Set(tasks.map((t) => t.crew).filter(Boolean))];
+  const crews = [...new Set(shown.filter((t) => !isMs(t)).map((t) => t.crew).filter(Boolean))];
   const swatch = { c0: '#c0663a', c1: '#5f8a55', c2: '#4a6f9e', c3: '#b08a2e', c4: '#7e5a96', c5: '#3d8580', c6: '#a64d60', c7: '#7a736a' };
-  const ms = tasks.filter(isMs);
+  const ms = shown.filter(isMs);
   const late = ms.filter((t) => msState(t) === 'late').length;
   $('#legend').innerHTML = crews.map((c) => `<span style="--c:${swatch[colorFor(c)]}">${esc(c)}</span>`).join('')
-    + (tasks.some((t) => !isMs(t) && t.progress >= 100) ? '<span style="--c:#b9b3aa">已完成</span>' : '')
+    + (shown.some((t) => !isMs(t) && t.progress >= 100) ? '<span style="--c:#b9b3aa">已完成</span>' : '')
     + (ms.length ? '<span class="lg-ms" style="--c:var(--ms)">注意事項</span>' : '')
     + (late ? `<span class="lg-ms" style="--c:var(--ms-late);color:var(--ms-late);font-weight:600">逾期 ${late} 項</span>` : '');
-  $('#crew-list').innerHTML = allCrews.map((c) => `<option value="${esc(c)}">`).join('');
 }
+
+/* ---------- 只看某個人 ---------- */
+function renderWho() {
+  const people = [...new Set(tasks.map((t) => t.crew).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  if (who && !people.includes(who)) { who = ''; store.set(WHO_KEY, ''); }
+  $('#f-who').innerHTML = '<option value="">只看：全部</option>'
+    + people.map((p) => `<option value="${esc(p)}">只看：${esc(p)}</option>`).join('');
+  $('#f-who').value = who;
+}
+$('#f-who').addEventListener('change', () => {
+  who = $('#f-who').value;
+  store.set(WHO_KEY, who);
+  render(tasks);
+});
 
 /* ---------- 檢視切換 ---------- */
 document.querySelectorAll('#views button').forEach((b) => {
@@ -544,9 +678,9 @@ function setEditType(type) {
   $('#dlg').classList.toggle('is-ms', ms);
   $('#l-name').textContent = ms ? '要注意的事' : '工項名稱';
   $('#l-start').textContent = ms ? '截止日' : '開始日';
-  $('#l-crew').textContent = ms ? '對象／負責人（選填）' : '工班';
+  $('#l-crew').textContent = ms ? '誰要做' : '工班';
   $('#l-deps').textContent = ms ? '相關工項（選填，會畫箭頭連過來）' : '前置工項（要先完成的）';
-  const verb = editingId ? '修改' : '新增';
+  const verb = role === 'view' ? '' : editingId ? '修改' : '新增';
   $('#dlg-title').innerHTML = ms ? `<span class="ms-icon">◆</span>${verb}注意事項` : `${verb}工項`;
 }
 
@@ -561,10 +695,13 @@ function openEdit(id, newType = 'task') {
   const lastEnd = tasks.reduce((m, x) => (x.end > m ? x.end : m), '');
   const defStart = lastEnd ? ymd(addDays(new Date(lastEnd + 'T00:00:00'), 1)) : today;
 
+  const ro = role === 'view';
+  $('#f-set').disabled = ro;
+  $('#btn-cancel').textContent = ro ? '關閉' : '取消';
   $('#f-name').value = t ? t.name : '';
   $('#f-start').value = t ? t.start : (type === 'milestone' ? today : defStart);
   $('#f-end').value = t ? t.end : defStart;
-  $('#f-crew').value = t ? t.crew : '';
+  fillCrewSelect(t ? t.crew : '', type);
   $('#f-progress').value = t ? t.progress : 0;
   $('#f-note').value = t ? t.note : '';
   $('#f-done').checked = !!(t && t.progress >= 100);
@@ -573,12 +710,41 @@ function openEdit(id, newType = 'task') {
 
   const deps = new Set((t ? t.dependencies : '').split(',').filter(Boolean));
   const others = tasks.filter((x) => x.id !== id && !isMs(x));
-  $('#f-deps').innerHTML = others.length
-    ? others.map((x) => `<label><input type="checkbox" value="${esc(x.id)}" ${deps.has(x.id) ? 'checked' : ''}>${esc(x.name)}</label>`).join('')
-    : '<span class="none">（還沒有工項）</span>';
+  const list = ro ? others.filter((x) => deps.has(x.id)) : others;
+  $('#f-deps').innerHTML = list.length
+    ? list.map((x) => `<label><input type="checkbox" value="${esc(x.id)}" ${deps.has(x.id) ? 'checked' : ''}>${esc(x.name)}</label>`).join('')
+    : `<span class="none">${ro ? '（無）' : '（還沒有工項）'}</span>`;
 
   $('#dlg').showModal();
-  if (!t) $('#f-name').focus();
+  if (!t && !ro) $('#f-name').focus();
+}
+
+/* ---------- 工班下拉選單：列出已有的工班，最後一項可新增 ---------- */
+const NEW_CREW = '__new__';
+// 注意事項「誰要做」固定會有的角色；工班也會列進來
+const OWNERS = ['我們（屋主）', '設計師', '監工'];
+function fillCrewSelect(current, type = 'task') {
+  const crews = [...new Set(tasks.filter((t) => !isMs(t)).map((t) => t.crew).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  const owners = [...new Set(tasks.filter(isMs).map((t) => t.crew).filter(Boolean))];
+  let opts = type === 'milestone'
+    ? [...new Set([...OWNERS, ...owners.filter((o) => !crews.includes(o)), ...crews])]
+    : crews;
+  if (current && !opts.includes(current)) opts = [...opts, current];
+  const crewsList = opts;
+  $('#f-crew-sel').innerHTML = '<option value="">（未指定）</option>'
+    + crewsList.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')
+    + `<option value="${NEW_CREW}">＋ 新增…</option>`;
+  $('#f-crew-sel').value = current || '';
+  $('#f-crew-new').value = '';
+  $('#f-crew-new').classList.add('hidden');
+}
+$('#f-crew-sel').addEventListener('change', () => {
+  const isNew = $('#f-crew-sel').value === NEW_CREW;
+  $('#f-crew-new').classList.toggle('hidden', !isNew);
+  if (isNew) $('#f-crew-new').focus();
+});
+function crewValue() {
+  return $('#f-crew-sel').value === NEW_CREW ? $('#f-crew-new').value.trim() : $('#f-crew-sel').value;
 }
 
 $('#btn-cancel').onclick = () => $('#dlg').close();
@@ -588,12 +754,13 @@ $('#f-start').addEventListener('change', () => {
 
 $('#edit-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (role === 'view') { $('#dlg').close(); return; }
   const ms = editType === 'milestone';
   const fields = {
     name: $('#f-name').value.trim(),
     start: $('#f-start').value,
     end: ms ? $('#f-start').value : $('#f-end').value,
-    crew: $('#f-crew').value.trim(),
+    crew: crewValue(),
     progress: ms ? ($('#f-done').checked ? 100 : 0) : Number($('#f-progress').value) || 0,
     note: $('#f-note').value.trim(),
     dependencies: [...$('#f-deps').querySelectorAll('input:checked')].map((i) => i.value).join(','),
@@ -667,9 +834,9 @@ function toast(msg, isErr) {
     $('#login-err').textContent = '尚未設定 API_URL';
     return;
   }
-  if (!password) { $('#login').classList.remove('hidden'); return; }
+  if (!password && !viewKey) { showLogin(''); return; }
   try { showApp((await api('list')).tasks); }
-  catch (e) { if (e.message !== 'AUTH') { $('#login').classList.remove('hidden'); $('#login-err').textContent = '連線失敗：' + e.message; } }
+  catch (e) { if (e.message !== 'AUTH') showLogin('連線失敗：' + e.message); }
 })();
 </script>
 </body>
