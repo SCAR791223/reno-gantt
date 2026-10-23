@@ -60,8 +60,11 @@
   #gantt-area { flex: 1; min-width: 0; }
 
   /* ── 左側工項清單 ── */
-  #tlist { flex: none; width: 240px; border-right: 1px solid var(--line); display: flex; flex-direction: column;
-    overflow: hidden; transition: width .2s ease; background: var(--card); }
+  #tlist { flex: none; width: var(--tl-w, 260px); border-right: 1px solid var(--line); display: flex; flex-direction: column;
+    overflow: hidden; transition: width .2s ease; background: var(--card); position: relative; }
+  #tlist.dragging { transition: none; user-select: none; }
+  #tl-resize { position: absolute; top: 0; right: 0; width: 8px; height: 100%; cursor: col-resize; z-index: 3; }
+  #tl-resize:hover, #tlist.dragging #tl-resize { background: color-mix(in srgb, var(--accent) 25%, transparent); }
   #tlist.collapsed { width: 0; border-right: 0; }
   .tl-head { height: 85px; flex: none; display: flex; align-items: flex-end; justify-content: space-between;
     padding: 0 12px 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); white-space: nowrap; }
@@ -69,7 +72,7 @@
   .tl-body { flex: 1; overflow: hidden; position: relative; }
   .tl-inner { position: absolute; left: 0; right: 0; top: 0; padding-top: 0; }
   .tl-row { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; cursor: pointer;
-    border-bottom: 1px solid #f1ede7; width: 240px; }
+    border-bottom: 1px solid #f1ede7; width: var(--tl-w, 260px); }
   .tl-row:hover, .tl-row.active { background: #faf6f1; }
   .tl-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c); }
   .tl-text { flex: 1; min-width: 0; line-height: 1.25; }
@@ -105,9 +108,11 @@
   .gantt .bar-wrapper.ms-late .bar-label { fill: var(--ms-late); }
   .gantt .bar-wrapper.ms-done .bar-label { fill: var(--muted); text-decoration: line-through; }
   .gantt .bar-wrapper.flash .ms-diamond { stroke: var(--accent); stroke-width: 3; }
+  .gantt .bar-label.ms-warn { fill: var(--ms-late); }
 
   .tl-diamond { width: 9px; height: 9px; flex: none; transform: rotate(45deg); background: var(--c); margin: 0 1px; }
   .tl-row.late .tl-meta { color: var(--ms-late); font-weight: 600; }
+  .tl-warn { color: var(--ms-late); font-weight: 600; }
   .tl-check { flex: none; width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; margin: 0; }
   .legend .lg-ms::before { border-radius: 1px; transform: rotate(45deg) scale(.85); }
   #empty { padding: 48px 16px; text-align: center; color: var(--muted); }
@@ -153,8 +158,8 @@
 
   @media (max-width: 600px) {
     header h1 { width: 100%; }
-    #tlist:not(.collapsed) { width: 150px; }
-    .tl-row { width: 150px; }
+    #tlist:not(.collapsed) { width: var(--tl-w, 150px); }
+    .tl-row { width: var(--tl-w, 150px); }
     .tl-meta .tl-crew { display: none; }
     .row2 { grid-template-columns: 1fr; }
   }
@@ -198,6 +203,7 @@
       <aside id="tlist">
         <div class="tl-head"><b>工項</b><span id="tl-count"></span></div>
         <div class="tl-body"><div class="tl-inner" id="tl-inner"></div></div>
+        <div id="tl-resize" title="拖拉調整清單寬度"></div>
       </aside>
       <div id="gantt-area">
         <div id="gantt"></div>
@@ -205,7 +211,7 @@
         <div id="empty-filter" class="hidden">這個人目前沒有項目，上方「只看」改回「全部」就能看到全部</div>
       </div>
     </div>
-    <p class="hint edit-only">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，過期未完成會變紅，在清單打勾即完成。</p>
+    <p class="hint edit-only">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，箭頭指向它要先完成的工程；過期或晚於開工會變紅，在清單打勾即完成。清單太窄可以拖它的右邊緣拉寬。</p>
     <p class="hint ro-only hidden">點色條、菱形或左側清單可以看詳細內容。◆ 是注意事項，紅色代表已過期還沒完成。</p>
   </main>
 </section>
@@ -274,6 +280,7 @@ const PW_KEY = 'reno-gantt-pw';
 const VIEW_KEY = 'reno-gantt-view';
 const LIST_KEY = 'reno-gantt-list';
 const WHO_KEY = 'reno-gantt-who';
+const TLW_KEY = 'reno-gantt-listw';
 const VKEY_KEY = 'reno-gantt-viewkey';
 const $ = (s) => document.querySelector(s);
 
@@ -437,13 +444,20 @@ function msColor(t) {
   if (st === 'late') return 'var(--ms-late)';
   if (OWNER_COLORS[t.crew]) return OWNER_COLORS[t.crew];
   if (t.crew && tasks.some((x) => !isMs(x) && x.crew === t.crew)) return SWATCH[colorFor(t.crew)];
-  return 'var(--ms)';
+  return t.crew ? 'var(--ms)' : '#6b7f99';   // 未指定：灰藍色，避免跟屋主的橘色混淆
 }
 const todayStr = () => ymd(new Date());
 /** 注意事項狀態：done / late / open */
 function msState(t) {
   if (t.progress >= 100) return 'done';
   return t.start < todayStr() ? 'late' : 'open';
+}
+/** 注意事項的截止日晚於它要先完成的工程開工日 → 回傳那個工程 */
+function msTooLate(t) {
+  if (!isMs(t) || t.progress >= 100) return null;
+  return t.dependencies.split(',').filter(Boolean)
+    .map((id) => tasks.find((x) => x.id === id))
+    .find((x) => x && !isMs(x) && t.start > x.start) || null;
 }
 function msMeta(t) {
   const st = msState(t);
@@ -473,6 +487,10 @@ function render(list) {
   renderLegend();
   if (!has) { gantt = null; $('#gantt').innerHTML = ''; renderList(); return; }
 
+  // 注意事項的「相關工項」= 這件事要在那個工程開工前完成，所以箭頭畫成 ◆ → 工程
+  const notesBefore = {};
+  shown.filter(isMs).forEach((n) => n.dependencies.split(',').filter(Boolean)
+    .forEach((tid) => { (notesBefore[tid] = notesBefore[tid] || []).push(n.id); }));
   const gTasks = shown.map((t) => ({
     id: t.id,
     name: t.name,
@@ -480,7 +498,10 @@ function render(list) {
     end: isMs(t) ? t.start : t.end,
     progress: isMs(t) ? 0 : t.progress,
     // 篩選後被藏起來的項目不畫箭頭
-    dependencies: t.dependencies.split(',').filter((d) => ids.has(d)).join(','),
+    dependencies: isMs(t) ? '' : [
+      ...t.dependencies.split(',').filter((d) => ids.has(d) && !isMs(tasks.find((x) => x.id === d) || {})),
+      ...(notesBefore[t.id] || []),
+    ].join(','),
     custom_class: isMs(t)
       ? { done: 'ms-done', late: 'ms-late', open: 'ms' }[msState(t)]
       : t.progress >= 100 ? 'done' : colorFor(t.crew),
@@ -505,6 +526,7 @@ function render(list) {
       const t = tasks.find((x) => x.id === task.id);
       const fields = t && isMs(t) ? { start: ymd(start), end: ymd(start) } : { start: ymd(start), end: ymd(end) };
       if (t) Object.assign(t, fields);
+      renderList(); drawDiamonds();   // 日期變了，「晚於開工」的提醒跟著更新
       // 拖拉過程可能觸發多次，等手放開 0.4 秒後只存最後一次
       clearTimeout(dateTimers[task.id]);
       dateTimers[task.id] = setTimeout(() => {
@@ -519,6 +541,12 @@ function render(list) {
       queueSave('update', { id: task.id, fields: { progress: p } }, `「${task.name}」進度 ${p}%`);
     },
   });
+  // 拖拉注意事項時不要連帶移動後面的工程；拖工程時也不帶動注意事項（截止日不該跟著跑）
+  const allDeps = gantt.get_all_dependent_tasks.bind(gantt);
+  gantt.get_all_dependent_tasks = (id) => {
+    if (isMs(tasks.find((x) => x.id === id) || {})) return [];
+    return allDeps(id).filter((d) => !isMs(tasks.find((x) => x.id === d) || {}));
+  };
   // 甘特圖上下捲動時，左側清單跟著捲
   gantt.$container.addEventListener('scroll', syncListScroll, { passive: true });
   drawDiamonds();
@@ -550,8 +578,14 @@ function drawDiamonds() {
     if (d.getAttribute('points') !== pts) d.setAttribute('points', pts);
     const t = tasks.find((x) => x.id === w.getAttribute('data-id'));
     if (t) { const c = msColor(t); if (d.style.fill !== c) d.style.fill = c; }
-    // 標籤放在菱形右邊
+    // 標籤放在菱形右邊；截止日比要先完成的工程還晚就加警告
     const label = w.querySelector('.bar-label');
+    if (label && t) {
+      const late = msTooLate(t);
+      const text = late ? `${t.name}  ⚠ 晚於${late.name}開工` : t.name;
+      if (label.textContent !== text) label.textContent = text;
+      label.classList.toggle('ms-warn', !!late);
+    }
     if (label) {
       const lx = String(Math.max(x + wdt, cx + r) + 6);
       if (label.getAttribute('x') !== lx) label.setAttribute('x', lx);
@@ -582,7 +616,7 @@ function renderList() {
       const c = msColor(t);
       return `<div class="tl-row${st === 'done' ? ' done' : ''}${st === 'late' ? ' late' : ''}" data-id="${esc(t.id)}" title="${esc(t.name)}">
       <span class="tl-diamond" style="--c:${c}"></span>
-      <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${t.crew ? `<span class="tl-crew">${esc(t.crew)} · </span>` : ''}${esc(msMeta(t))}</div></div>
+      <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${t.crew ? `<span class="tl-crew">${esc(t.crew)} · </span>` : ''}${esc(msMeta(t))}${msTooLate(t) ? `<span class="tl-warn"> · ⚠ 晚於${esc(msTooLate(t).name)}開工</span>` : ''}</div></div>
       <input type="checkbox" class="tl-check" data-done="${esc(t.id)}" ${st === 'done' ? 'checked' : ''} ${role === 'view' ? 'disabled' : ''} title="完成">
     </div>`;
     }
@@ -629,6 +663,32 @@ function setListOpen(open, remember) {
   if (remember) store.set(LIST_KEY, open ? '1' : '0');
 }
 $('#btn-list').onclick = () => setListOpen($('#tlist').classList.contains('collapsed'), true);
+
+/* 清單右邊緣可以拖拉，名稱太長時拉寬就能完整看到；寬度會記住 */
+{
+  const setW = (w) => document.documentElement.style.setProperty('--tl-w', w + 'px');
+  const saved = Number(store.get(TLW_KEY));
+  if (saved) setW(saved);
+  let startX = 0, startW = 0;
+  const move = (e) => {
+    const x = (e.touches ? e.touches[0] : e).clientX;
+    const w = Math.max(140, Math.min(window.innerWidth - 120, startW + x - startX));
+    setW(w);
+  };
+  const up = () => {
+    $('#tlist').classList.remove('dragging');
+    store.set(TLW_KEY, String(Math.round($('#tlist').getBoundingClientRect().width)));
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  $('#tl-resize').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    startX = e.clientX; startW = $('#tlist').getBoundingClientRect().width;
+    $('#tlist').classList.add('dragging');
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+}
 // 預設：電腦打開、手機收起；之後記住使用者的選擇
 {
   const saved = store.get(LIST_KEY);
@@ -654,7 +714,7 @@ function msLegend(ms) {
     .sort((a, b) => (b in OWNER_COLORS) - (a in OWNER_COLORS) || a.localeCompare(b, 'zh-Hant'));
   return owners.map((o) => {
     const c = msColor({ ...ms.find((t) => (t.crew || '') === o), progress: 0, start: '9999-12-31' });
-    return `<span class="lg-ms" style="--c:${c}">${o ? esc(o) : '注意事項'}</span>`;
+    return `<span class="lg-ms" style="--c:${c}">${o ? esc(o) : '未指定'}</span>`;
   }).join('');
 }
 
@@ -704,7 +764,7 @@ function setEditType(type) {
   $('#l-name').textContent = ms ? '要注意的事' : '工項名稱';
   $('#l-start').textContent = ms ? '截止日' : '開始日';
   $('#l-crew').textContent = ms ? '誰要做' : '工班';
-  $('#l-deps').textContent = ms ? '相關工項（選填，會畫箭頭連過來）' : '前置工項（要先完成的）';
+  $('#l-deps').textContent = ms ? '要在哪個工程開工前完成（選填）' : '前置工項（要先完成的）';
   const verb = role === 'view' ? '' : editingId ? '修改' : '新增';
   $('#dlg-title').innerHTML = ms ? `<span class="ms-icon">◆</span>${verb}注意事項` : `${verb}工項`;
 }
@@ -725,6 +785,7 @@ function openEdit(id, newType = 'task') {
   $('#btn-cancel').textContent = ro ? '關閉' : '取消';
   $('#f-name').value = t ? t.name : '';
   $('#f-start').value = t ? t.start : (type === 'milestone' ? today : defStart);
+  delete $('#f-start').dataset.touched;
   $('#f-end').value = t ? t.end : defStart;
   fillCrewSelect(t ? t.crew : '', type);
   $('#f-progress').value = t ? t.progress : 0;
@@ -776,6 +837,13 @@ $('#btn-cancel').onclick = () => $('#dlg').close();
 $('#f-start').addEventListener('change', () => {
   if ($('#f-end').value < $('#f-start').value) $('#f-end').value = $('#f-start').value;
 });
+// 新增注意事項時勾了某個工程，截止日自動帶入那個工程的開工日（之後仍可自己改）
+$('#f-deps').addEventListener('change', (e) => {
+  if (editType !== 'milestone' || editingId || !e.target.checked) return;
+  const t = tasks.find((x) => x.id === e.target.value);
+  if (t && !$('#f-start').dataset.touched) $('#f-start').value = t.start;
+});
+$('#f-start').addEventListener('input', () => { $('#f-start').dataset.touched = '1'; });
 
 $('#edit-form').addEventListener('submit', async (e) => {
   e.preventDefault();
