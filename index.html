@@ -166,8 +166,58 @@
   #toast.show { opacity: 1; }
   #toast.err { background: var(--danger); }
 
+  /* ── 行程檢視（手機好讀）── */
+  #agenda { max-width: 760px; }
+  .ag-week { margin: 0 0 14px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .ag-week.past { opacity: .55; }
+  .ag-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #faf8f5; border-bottom: 1px solid var(--line);
+    font-size: 14px; font-weight: 600; position: sticky; top: var(--hdr-h, 0px); z-index: 2; }
+  .ag-head .ag-tag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #fff; }
+  .ag-head .ag-tag.next { background: #eef3f8; color: #3c5a7a; }
+  .ag-head .ag-sub { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); }
+  .ag-row { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px; border-top: 1px solid #f1ede7; cursor: pointer; }
+  .ag-row:first-of-type { border-top: 0; }
+  .ag-row:active { background: #faf6f1; }
+  .ag-mark { flex: none; width: 4px; align-self: stretch; border-radius: 2px; background: var(--c); }
+  .ag-mark.dia { width: 10px; height: 10px; align-self: auto; margin: 4px -3px 0; border-radius: 1px; transform: rotate(45deg); }
+  .ag-main { flex: 1; min-width: 0; }
+  .ag-name { font-size: 15px; line-height: 1.35; }
+  .ag-meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+  .ag-meta b { font-weight: 600; color: var(--ink); }
+  .ag-note { font-size: 12.5px; color: var(--muted); margin-top: 3px; white-space: pre-line; }
+  .ag-chip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: #f1ede7; color: var(--muted); margin-left: 4px; vertical-align: 1px; }
+  .ag-row.done .ag-name { color: var(--muted); text-decoration: line-through; }
+  .ag-row.late .ag-meta { color: var(--ms-late); font-weight: 600; }
+  .ag-row .tl-check { margin-top: 2px; width: 22px; height: 22px; }
+  .ag-empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+  body.mode-list .gantt-only { display: none !important; }
+
+  /* ── 手機：上方縮成兩排，其他按鈕收進「⋯」，新增用右下角的＋ ── */
+  #btn-more, #fab, #fab-menu, #more-menu { display: none; }
+  .hdr-row2 { display: contents; }
+  .pop { position: absolute; z-index: 30; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.15);
+    padding: 6px; min-width: 190px; display: grid; }
+  .pop button { border: 0; background: none; text-align: left; padding: 11px 12px; border-radius: 8px; font-size: 15px; cursor: pointer; }
+  .pop button:active { background: #f4f0ea; }
+
   @media (max-width: 600px) {
-    header h1 { width: 100%; }
+    header { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 12px; }
+    header h1 { width: auto; margin: 0; align-self: center; font-size: 17px; }
+    header .hdr-extra { display: none !important; }
+    #btn-more { display: inline-block; padding: 6px 12px; font-size: 18px; line-height: 1; }
+    header .hdr-row2 { grid-column: 1 / -1; display: flex; gap: 8px; }
+    header .hdr-row2 .seg { flex: 1; }
+    header .hdr-row2 .seg button { flex: 1; padding: 7px 0; }
+    header .hdr-row2 select.who { flex: none; max-width: 38%; }
+    #more-menu.open { display: grid; position: fixed; top: 52px; right: 10px; }
+    body:not(.ro) #fab { display: grid; place-items: center; position: fixed; right: 18px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 25;
+      width: 56px; height: 56px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 30px; line-height: 1;
+      box-shadow: 0 6px 18px rgba(192,102,58,.45); cursor: pointer; }
+    #fab-menu.open { display: grid; position: fixed; right: 18px; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
+    main { padding: 12px 10px 90px; }
+    .legend { gap: 8px 10px; font-size: 12px; }
+    body.mode-list .legend { display: none; }
+    .ag-row { padding: 12px; }
     #tlist:not(.collapsed) { width: var(--tl-w, 150px); }
     .tl-row { width: var(--tl-w, 150px); }
     .tl-meta .tl-crew { display: none; }
@@ -194,21 +244,38 @@
 <section id="app" class="hidden">
   <header>
     <h1>🏠 裝潢時程 <span id="ro-badge" class="ro-badge hidden">瀏覽模式</span></h1>
-    <select id="f-who" class="who" title="只看某個人的項目" aria-label="只看"></select>
-    <div class="seg" id="views">
-      <button data-v="Day">日</button><button data-v="Week" class="on">週</button><button data-v="Month">月</button>
+    <button class="btn" id="btn-more" aria-label="更多">⋯</button>
+    <div class="hdr-row2">
+      <select id="f-who" class="who" title="只看某個人的項目" aria-label="只看"></select>
+      <div class="seg" id="views">
+        <button data-v="List">行程</button><button data-v="Day">日</button><button data-v="Week" class="on">週</button><button data-v="Month">月</button>
+      </div>
     </div>
-    <button class="btn" id="btn-list" title="顯示／隱藏工項清單">☰ 清單</button>
-    <button class="btn" id="btn-today">今天</button>
-    <button class="btn" id="btn-reload" title="重新載入">⟳</button>
-    <button class="btn primary edit-only" id="btn-add">＋ 工項</button>
-    <button class="btn btn-ms edit-only" id="btn-add-ms">＋ 注意事項</button>
-    <button class="btn edit-only" id="btn-share" title="產生給設計師的瀏覽連結">🔗 分享瀏覽連結</button>
-    <button class="btn edit-only" id="btn-logout" title="登出">登出</button>
-    <button class="btn primary view-only" id="btn-login">🔒 登入修改</button>
+    <button class="btn hdr-extra gantt-only" id="btn-list" title="顯示／隱藏工項清單">☰ 清單</button>
+    <button class="btn hdr-extra" id="btn-today">今天</button>
+    <button class="btn hdr-extra" id="btn-reload" title="重新載入">⟳</button>
+    <button class="btn primary edit-only hdr-extra" id="btn-add">＋ 工項</button>
+    <button class="btn btn-ms edit-only hdr-extra" id="btn-add-ms">＋ 注意事項</button>
+    <button class="btn edit-only hdr-extra" id="btn-share" title="產生給設計師的瀏覽連結">🔗 分享瀏覽連結</button>
+    <button class="btn edit-only hdr-extra" id="btn-logout" title="登出">登出</button>
+    <button class="btn primary view-only hdr-extra" id="btn-login">🔒 登入修改</button>
   </header>
+  <div class="pop" id="more-menu">
+    <button data-proxy="#btn-today">📍 回到今天</button>
+    <button data-proxy="#btn-reload">⟳ 重新整理</button>
+    <button data-proxy="#btn-list" class="gantt-only">☰ 顯示／隱藏清單</button>
+    <button data-proxy="#btn-share" class="edit-only">🔗 分享瀏覽連結</button>
+    <button data-proxy="#btn-logout" class="edit-only">登出</button>
+    <button data-proxy="#btn-login" class="view-only">🔒 登入修改</button>
+  </div>
+  <button id="fab" class="edit-only" aria-label="新增">＋</button>
+  <div class="pop" id="fab-menu">
+    <button data-proxy="#btn-add">● 新增工項</button>
+    <button data-proxy="#btn-add-ms" style="color:var(--ms)">◆ 新增注意事項</button>
+  </div>
   <main>
     <div class="legend" id="legend"></div>
+    <div id="agenda" class="hidden"></div>
     <div id="chart-wrap">
       <aside id="tlist">
         <div class="tl-head"><b>工項</b><span id="tl-count"></span></div>
@@ -221,8 +288,8 @@
         <div id="empty-filter" class="hidden">這個人目前沒有項目，上方「只看」改回「全部」就能看到全部</div>
       </div>
     </div>
-    <p class="hint edit-only">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，箭頭指向它要先完成的工程；過期或晚於開工會變紅，在清單打勾即完成。按住清單左邊的 ⋮⋮ 上下拖可以調整順序；清單太窄可以拖它的右邊緣拉寬。</p>
-    <p class="hint ro-only hidden">點色條、菱形或左側清單可以看詳細內容。◆ 是注意事項，紅色代表已過期還沒完成。</p>
+    <p class="hint edit-only gantt-only">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，箭頭指向它要先完成的工程；過期或晚於開工會變紅，在清單打勾即完成。按住清單左邊的 ⋮⋮ 上下拖可以調整順序；清單太窄可以拖它的右邊緣拉寬。</p>
+    <p class="hint ro-only gantt-only hidden">點色條、菱形或左側清單可以看詳細內容。◆ 是注意事項，紅色代表已過期還沒完成。</p>
   </main>
 </section>
 
@@ -308,7 +375,7 @@ let viewKey = store.get(VKEY_KEY) || '';
 let tasks = [];
 let gantt = null;
 let editingId = null;
-let viewMode = store.get(VIEW_KEY) || 'Week';
+let viewMode = store.get(VIEW_KEY) || (window.innerWidth <= 600 ? 'List' : 'Week');   // 手機預設用「行程」
 let saveChain = Promise.resolve();
 let pendingWrites = 0;
 const dateTimers = {};
@@ -497,6 +564,11 @@ function render(list) {
   $('#empty-filter').classList.toggle('hidden', has || !tasks.length);
   $('#gantt').classList.toggle('hidden', !has);
   renderLegend();
+  const listMode = viewMode === 'List';
+  document.body.classList.toggle('mode-list', listMode);
+  $('#chart-wrap').classList.toggle('hidden', listMode);
+  $('#agenda').classList.toggle('hidden', !listMode);
+  if (listMode) { gantt = null; $('#gantt').innerHTML = ''; renderList(); renderAgenda(); markView(); return; }
   if (!has) { gantt = null; $('#gantt').innerHTML = ''; renderList(); return; }
 
   // 注意事項的「相關工項」= 這件事要在那個工程開工前完成，所以箭頭畫成 ◆ → 工程
@@ -577,6 +649,81 @@ function render(list) {
   renderList();
   markView();
 }
+
+/* ---------- 行程檢視：照週分組、由上往下排，手機上比較好讀 ---------- */
+const WD = ['日', '一', '二', '三', '四', '五', '六'];
+const wd = (s) => WD[new Date(s + 'T00:00:00').getDay()];
+const mondayOf = (s) => { const d = new Date(s + 'T00:00:00'); return ymd(addDays(d, -((d.getDay() + 6) % 7))); };
+function workdays(a, b) { let n = 0; for (let d = new Date(a + 'T00:00:00'); ymd(d) <= b; d = addDays(d, 1)) if (!isOffDay(ymd(d))) n++; return n; }
+let agendaScrolled = false;
+function renderAgenda() {
+  const box = $('#agenda');
+  if (!tasks.length) { box.innerHTML = '<div class="ag-empty">還沒有任何項目</div>'; return; }
+  if (!shown.length) { box.innerHTML = '<div class="ag-empty">這個人目前沒有項目，上方「只看」改回「全部」就能看到全部</div>'; return; }
+  const items = shown.map((t) => ({ t, s: t.start, e: isMs(t) ? t.start : t.end }));
+  const first = mondayOf(items.reduce((m, i) => (i.s < m ? i.s : m), items[0].s));
+  const last = items.reduce((m, i) => (i.e > m ? i.e : m), items[0].e);
+  const thisMon = mondayOf(todayStr()), nextMon = ymd(addDays(new Date(thisMon + 'T00:00:00'), 7));
+  let html = '';
+  for (let w = first; w <= last; w = ymd(addDays(new Date(w + 'T00:00:00'), 7))) {
+    const wEnd = ymd(addDays(new Date(w + 'T00:00:00'), 6));
+    const list = items.filter((i) => i.s <= wEnd && i.e >= w)
+      .sort((a, b) => (a.s < w ? '0' : a.s).localeCompare(b.s < w ? '0' : b.s) || (isMs(a.t) - isMs(b.t)));
+    if (!list.length) continue;
+    const tag = w === thisMon ? '<span class="ag-tag">本週</span>' : w === nextMon ? '<span class="ag-tag next">下週</span>' : '';
+    html += `<section class="ag-week${wEnd < todayStr() ? ' past' : ''}" data-week="${w}">
+      <div class="ag-head">${md(w)}（一）– ${md(wEnd)}（日）${tag}<span class="ag-sub">${list.length} 項</span></div>
+      ${list.map((i) => agendaRow(i, w)).join('')}</section>`;
+  }
+  box.innerHTML = html;
+  if (!agendaScrolled) { agendaScrolled = true; requestAnimationFrame(() => scrollAgendaToNow(false)); }
+}
+function agendaRow({ t, s, e }, w) {
+  const name = `<div class="ag-name">${esc(t.name)}</div>`;
+  const note = t.note ? `<div class="ag-note">${esc(t.note)}</div>` : '';
+  if (isMs(t)) {
+    const st = msState(t), late = msTooLate(t);
+    return `<div class="ag-row${st === 'done' ? ' done' : ''}${st === 'late' ? ' late' : ''}" data-id="${esc(t.id)}">
+      <span class="ag-mark dia" style="--c:${msColor(t)}"></span>
+      <div class="ag-main">${name}<div class="ag-meta">◆ ${esc(msMeta(t).replace(md(t.start), `${md(t.start)}（${wd(t.start)}）`))}${t.crew ? ` · <b>${esc(t.crew)}</b>` : ''}${late ? `<br><span style="color:var(--ms-late);font-weight:600">⚠ 晚於${esc(late.name)}開工</span>` : ''}</div>${note}</div>
+      <input type="checkbox" class="tl-check" data-done="${esc(t.id)}" ${st === 'done' ? 'checked' : ''} ${role === 'view' ? 'disabled' : ''} aria-label="完成">
+    </div>`;
+  }
+  const done = t.progress >= 100;
+  const cont = s < w ? '<span class="ag-chip">進行中</span>' : '';
+  const range = s === e ? `${md(s)}（${wd(s)}）` : `${md(s)}（${wd(s)}）– ${md(e)}（${wd(e)}）`;
+  const prog = t.progress > 0 && !done ? ` · ${Math.round(t.progress)}%` : done ? ' · 已完成' : '';
+  return `<div class="ag-row${done ? ' done' : ''}" data-id="${esc(t.id)}">
+    <span class="ag-mark" style="--c:${SWATCH[done ? 'done' : colorFor(t.crew)]}"></span>
+    <div class="ag-main">${name}<div class="ag-meta">${range}${cont} · ${workdays(s, e)} 個工作天${t.crew ? ` · <b>${esc(t.crew)}</b>` : ''}${prog}</div>${note}</div>
+  </div>`;
+}
+function scrollAgendaToNow(smooth) {
+  const secs = [...document.querySelectorAll('.ag-week')];
+  const target = secs.find((x) => x.dataset.week >= mondayOf(todayStr())) || secs[secs.length - 1];
+  if (!target) return;
+  const hh = document.querySelector('header').offsetHeight;
+  window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - hh - 8, behavior: smooth ? 'smooth' : 'auto' });
+}
+$('#agenda').addEventListener('click', (e) => {
+  const doneId = e.target.closest('[data-done]')?.dataset.done;
+  if (doneId) { e.preventDefault(); if (role !== 'view') toggleDone(doneId); return; }
+  const row = e.target.closest('.ag-row');
+  if (row) openEdit(row.dataset.id);
+});
+// 行程檢視的週標題要貼在上方選單下面
+const setHdrH = () => document.documentElement.style.setProperty('--hdr-h', document.querySelector('header').offsetHeight + 'px');
+window.addEventListener('resize', setHdrH); setTimeout(setHdrH, 0);
+
+/* ---------- 手機的「⋯」選單和右下角＋ ---------- */
+function bindPop(btn, menu) {
+  $(btn).addEventListener('click', (e) => { e.stopPropagation(); const open = !$(menu).classList.contains('open');
+    document.querySelectorAll('.pop.open').forEach((m) => m.classList.remove('open')); $(menu).classList.toggle('open', open); });
+  $(menu).addEventListener('click', (e) => { const b = e.target.closest('[data-proxy]'); if (!b) return; $(menu).classList.remove('open'); $(b.dataset.proxy).click(); });
+}
+bindPop('#btn-more', '#more-menu');
+bindPop('#fab', '#fab-menu');
+document.addEventListener('click', () => document.querySelectorAll('.pop.open').forEach((m) => m.classList.remove('open')));
 
 /* ---------- 甘特圖塞進畫面高度：圖表自己上下捲，日期列和左邊標題就不會捲走 ---------- */
 function fitChart() {
@@ -875,14 +1022,18 @@ document.querySelectorAll('#views button').forEach((b) => {
   b.onclick = () => {
     viewMode = b.dataset.v;
     store.set(VIEW_KEY, viewMode);
-    if (gantt) render(tasks);   // 日檢視會藏假日，切換時整張重畫
+    agendaScrolled = false;
+    if (tasks.length) render(tasks);   // 日檢視會藏假日、行程是另一種畫面，切換時整張重畫
     markView();
   };
 });
 function markView() {
   document.querySelectorAll('#views button').forEach((b) => b.classList.toggle('on', b.dataset.v === viewMode));
 }
-$('#btn-today').onclick = () => gantt && TL && gantt.set_scroll_position(TL.scrollTarget());
+$('#btn-today').onclick = () => {
+  if (viewMode === 'List') return scrollAgendaToNow(true);
+  if (gantt && TL) gantt.set_scroll_position(TL.scrollTarget());
+};
 $('#btn-reload').onclick = () => { reload(); toast('已重新載入'); };
 
 // 切回這個分頁時自動抓最新資料（看到對方剛改的內容）
@@ -1051,10 +1202,11 @@ function buildTimeline(compress) {
   if (!compress) {
     // 週檢視從星期一開始算一週
     const w0 = taskDates.length ? new Date(taskDates[0] + 'T00:00:00').getDay() : 1;
-    const vm = (name) => ({ Week: { ...Gantt.VIEW_MODE.WEEK, padding: [`${28 + ((w0 + 6) % 7)}d`, '2m'] }, Month: { ...Gantt.VIEW_MODE.MONTH, padding: ['2m', '3m'] } }[name]
+    const narrow = window.innerWidth <= 600;
+    const vm = (name) => ({ Week: { ...Gantt.VIEW_MODE.WEEK, padding: [`${28 + ((w0 + 6) % 7)}d`, '2m'], ...(narrow ? { column_width: 84 } : {}) }, Month: { ...Gantt.VIEW_MODE.MONTH, padding: ['2m', '3m'] } }[name]
       || { ...Gantt.VIEW_MODE.DAY, padding: ['14d', '30d'] });
     return { compress: false, startIn: idt, endIn: (e, s) => (s && e < s ? s : e), out: ymd, viewMode: vm,
-      scrollTarget: () => ymd(addDays(new Date(), viewMode === 'Day' ? -3 : -10)), fixToday() {} };
+      scrollTarget: () => ymd(addDays(new Date(), viewMode === 'Month' ? -20 : -4)), fixToday() {} };
   }
   const work = [];                       // 第 i 個上班日的真正日期
   const nextIdx = new Map(), prevIdx = new Map();
