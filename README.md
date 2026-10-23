@@ -1,3 +1,42 @@
 # 🏠 裝潢甘特圖
 
 資料放在 Google Sheets，網頁放在 GitHub Pages，用密碼保護。
+可拖拉色條改日期、拉右端改工期、拖小圓點改進度，點色條編輯。
+
+```
+GitHub Pages（index.html）  ──POST + 密碼──▶  Apps Script（Code.gs）  ──▶  Google Sheets「時程」
+```
+
+## 一、Google Sheets + Apps Script
+
+1. 新增一個 Google 試算表，例如命名「裝潢時程」
+2. 選單「擴充功能 → Apps Script」，把 `Code.gs` 全部貼上取代，存檔
+3. 上方函式選 `setup` → 按「執行」→ 依畫面授權（第一次會出現「Google 尚未驗證」，按「進階 → 前往」即可，這是你自己的程式）
+4. 左側「專案設定 ⚙️」→ 最下方「指令碼屬性」→ 新增：名稱 `PASSWORD`，值填你們的密碼
+5. 右上「部署 → 新增部署作業」→ 類型選「網頁應用程式」
+   - 執行身分：**我**
+   - 誰可以存取：**所有人**
+6. 複製「網頁應用程式網址」（`https://script.google.com/macros/s/.../exec`）
+
+> 為什麼是「所有人」：網頁要能從 GitHub Pages 呼叫它。保護靠密碼，沒密碼什麼都拿不到。
+
+## 二、GitHub Pages
+
+1. 打開 `index.html`，把 `API_URL` 換成上面的網址
+2. 建一個 GitHub repo，上傳 `index.html`
+3. repo 的 Settings → Pages → Source 選 `Deploy from a branch`，分支 `main`、資料夾 `/ (root)`
+4. 一兩分鐘後網址會是 `https://你的帳號.github.io/repo名稱/`
+
+把網址和密碼傳給老婆，第一次輸入後瀏覽器會記住。
+
+## 日常使用
+
+- 網頁：拖拉、點色條編輯、＋新增工項
+- Sheets：也可以直接改，網頁按 ⟳ 或切回分頁就會更新；新增一列不用填 id，會自動補上
+- 「相依」欄填前置工項的 id（如 `T1,T2`），網頁上用勾選比較方便
+- 進度 100% 的工項會變灰
+
+## 之後要改程式
+
+- 改 `Code.gs` 後要「部署 → 管理部署作業 → 編輯 ✏️ → 版本選新版本 → 部署」，網址不會變
+- 換密碼：改指令碼屬性 `PASSWORD`，兩人重新登入即可

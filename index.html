@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>裝潢時程</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@1.2.2/dist/frappe-gantt.css">
+<style>
+  :root {
+    --bg: #f7f5f2;
+    --card: #ffffff;
+    --ink: #2b2a28;
+    --muted: #8a857d;
+    --line: #e7e2da;
+    --accent: #c0663a;
+    --accent-ink: #ffffff;
+    --danger: #b3402f;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .hidden { display: none !important; }
+
+  /* ── 登入 ── */
+  #login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+  #login form { background: var(--card); padding: 28px; border-radius: 16px; width: 100%; max-width: 340px;
+    box-shadow: 0 6px 30px rgba(0,0,0,.06); }
+  #login h1 { margin: 0 0 4px; font-size: 22px; }
+  #login p { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+  #login .err { color: var(--danger); font-size: 14px; min-height: 20px; margin: 8px 0 0; }
+
+  input[type=text], input[type=password], input[type=date], input[type=number], textarea, select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
+
+  .btn { border: 1px solid var(--line); background: var(--card); padding: 8px 14px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+  .btn:hover { border-color: #cfc8bd; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.danger { color: var(--danger); }
+  .btn.block { width: 100%; margin-top: 12px; padding: 11px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  /* ── 主畫面 ── */
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+    padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  header h1 { font-size: 18px; margin: 0 auto 0 0; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
+  .seg button { border: 0; background: none; padding: 7px 12px; cursor: pointer; }
+  .seg button.on { background: var(--ink); color: #fff; }
+
+  main { padding: 16px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+    background: var(--c); margin-right: 6px; vertical-align: -1px; }
+  #chart-wrap { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  #empty { padding: 48px 16px; text-align: center; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 13px; margin: 10px 2px 0; }
+
+  /* 甘特圖顏色：依工班上色，完成的變灰 */
+  .gantt-container { --g-today-highlight: var(--accent); font-family: inherit; }
+  .gantt .bar-wrapper.c0 .bar { fill: #f3c9b4; } .gantt .bar-wrapper.c0 .bar-progress { fill: #c0663a; }
+  .gantt .bar-wrapper.c1 .bar { fill: #c9dcc4; } .gantt .bar-wrapper.c1 .bar-progress { fill: #5f8a55; }
+  .gantt .bar-wrapper.c2 .bar { fill: #c6d6ea; } .gantt .bar-wrapper.c2 .bar-progress { fill: #4a6f9e; }
+  .gantt .bar-wrapper.c3 .bar { fill: #ecd9a8; } .gantt .bar-wrapper.c3 .bar-progress { fill: #b08a2e; }
+  .gantt .bar-wrapper.c4 .bar { fill: #dccbe6; } .gantt .bar-wrapper.c4 .bar-progress { fill: #7e5a96; }
+  .gantt .bar-wrapper.c5 .bar { fill: #bfe0dd; } .gantt .bar-wrapper.c5 .bar-progress { fill: #3d8580; }
+  .gantt .bar-wrapper.c6 .bar { fill: #ebc3cb; } .gantt .bar-wrapper.c6 .bar-progress { fill: #a64d60; }
+  .gantt .bar-wrapper.c7 .bar { fill: #d9d4cc; } .gantt .bar-wrapper.c7 .bar-progress { fill: #7a736a; }
+  .gantt .bar-wrapper.done .bar { fill: #e4e1dc; } .gantt .bar-wrapper.done .bar-progress { fill: #b9b3aa; }
+  .gantt .bar-label { fill: #2b2a28; font-weight: 500; }
+  .gantt .bar-label.big { fill: var(--ink); }
+
+  /* ── 編輯視窗 ── */
+  dialog { border: 0; border-radius: 14px; padding: 0; width: min(460px, calc(100vw - 32px)); box-shadow: 0 10px 40px rgba(0,0,0,.2); }
+  dialog::backdrop { background: rgba(30, 25, 20, .35); }
+  dialog form { padding: 20px; display: grid; gap: 12px; }
+  dialog h2 { margin: 0; font-size: 18px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .deps { display: flex; flex-wrap: wrap; gap: 6px 14px; max-height: 120px; overflow: auto; padding: 8px 10px;
+    border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-size: 14px; }
+  .deps label { display: inline-flex; gap: 6px; align-items: center; color: var(--ink); font-size: 14px; }
+  .deps .none { color: var(--muted); }
+  .actions { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+  .actions .spacer { flex: 1; }
+
+  /* ── 提示訊息 ── */
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff;
+    padding: 10px 16px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+  #toast.show { opacity: 1; }
+  #toast.err { background: var(--danger); }
+
+  @media (max-width: 600px) {
+    header h1 { width: 100%; }
+    .row2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 登入畫面 -->
+<section id="login" class="hidden">
+  <form id="login-form" autocomplete="on">
+    <h1>🏠 裝潢時程</h1>
+    <p>請輸入密碼</p>
+    <input type="text" name="username" value="reno-gantt" autocomplete="username" class="hidden" aria-hidden="true">
+    <input id="pw" type="password" autocomplete="current-password" placeholder="密碼" required>
+    <button class="btn primary block" type="submit">進入</button>
+    <div class="err" id="login-err"></div>
+  </form>
+</section>
+
+<!-- 主畫面 -->
+<section id="app" class="hidden">
+  <header>
+    <h1>🏠 裝潢時程</h1>
+    <div class="seg" id="views">
+      <button data-v="Day">日</button><button data-v="Week" class="on">週</button><button data-v="Month">月</button>
+    </div>
+    <button class="btn" id="btn-today">今天</button>
+    <button class="btn" id="btn-reload" title="重新載入">⟳</button>
+    <button class="btn primary" id="btn-add">＋ 新增工項</button>
+    <button class="btn" id="btn-logout" title="登出">登出</button>
+  </header>
+  <main>
+    <div class="legend" id="legend"></div>
+    <div id="chart-wrap">
+      <div id="gantt"></div>
+      <div id="empty" class="hidden">還沒有任何工項，按「＋ 新增工項」開始吧</div>
+    </div>
+    <p class="hint">拖拉色條可改日期，拉右端改工期，拖拉色條內的小圓點改進度；點色條可編輯。</p>
+  </main>
+</section>
+
+<!-- 編輯視窗 -->
+<dialog id="dlg">
+  <form id="edit-form" method="dialog">
+    <h2 id="dlg-title">編輯工項</h2>
+    <label>工項名稱<input type="text" id="f-name" required maxlength="60"></label>
+    <div class="row2">
+      <label>開始日<input type="date" id="f-start" required></label>
+      <label>結束日<input type="date" id="f-end" required></label>
+    </div>
+    <div class="row2">
+      <label>工班<input type="text" id="f-crew" list="crew-list" maxlength="30"></label>
+      <label>進度（%）<input type="number" id="f-progress" min="0" max="100" step="5"></label>
+    </div>
+    <datalist id="crew-list"></datalist>
+    <label>前置工項（要先完成的）<div class="deps" id="f-deps"></div></label>
+    <label>備註<textarea id="f-note" rows="2" maxlength="300"></textarea></label>
+    <div class="actions">
+      <button class="btn danger" type="button" id="btn-del">刪除</button>
+      <span class="spacer"></span>
+      <button class="btn" type="button" id="btn-cancel">取消</button>
+      <button class="btn primary" type="submit" id="btn-save">儲存</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/frappe-gantt@1.2.2/dist/frappe-gantt.umd.js"></script>
+<script>
+/* ===================== 設定 ===================== */
+// 部署 Apps Script 後拿到的網頁應用程式網址（不是密碼，公開沒關係）
+const API_URL = 'https://script.google.com/macros/s/AKfycbwOj1Rh1cIGGfl9OvbLWvK0ZXewJgfAZikTuHdzhCuugNrXU-5dCAbkeIzEpiv4f7zhWQ/exec';
+/* ================================================= */
+
+/* ---------- localStorage（隱私模式下可能失效，失效就每次輸入密碼） ---------- */
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+
+const PW_KEY = 'reno-gantt-pw';
+const VIEW_KEY = 'reno-gantt-view';
+const $ = (s) => document.querySelector(s);
+
+let password = store.get(PW_KEY) || '';
+let tasks = [];
+let gantt = null;
+let editingId = null;
+let viewMode = store.get(VIEW_KEY) || 'Week';
+let saveChain = Promise.resolve();
+let pendingWrites = 0;
+const dateTimers = {};
+
+/* ---------- API ---------- */
+async function api(action, payload = {}) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    // 用 text/plain 避免 CORS 預檢，Apps Script 才收得到
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ password, action, ...payload }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    if (data.error === 'AUTH') { logout('密碼錯誤或已變更，請重新輸入'); }
+    throw new Error(data.error || '發生錯誤');
+  }
+  return data;
+}
+
+/** 寫入排隊依序送出，避免拖拉多條時互相打架 */
+function queueSave(action, payload, okMsg) {
+  pendingWrites++;
+  saveChain = saveChain
+    .then(() => api(action, payload))
+    .then((d) => { if (okMsg) toast(okMsg); return d; })
+    .catch((e) => { toast('儲存失敗：' + e.message, true); return reload(); })
+    .finally(() => { pendingWrites--; });
+  return saveChain;
+}
+
+/* ---------- 登入 / 登出 ---------- */
+$('#login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  password = $('#pw').value;
+  $('#login-err').textContent = '';
+  const btn = e.submitter; if (btn) btn.disabled = true;
+  try {
+    const d = await api('list');
+    store.set(PW_KEY, password);
+    showApp(d.tasks);
+  } catch (err) {
+    $('#login-err').textContent = err.message === 'AUTH' ? '密碼錯誤' : '連線失敗：' + err.message;
+  } finally { if (btn) btn.disabled = false; }
+});
+
+function logout(msg) {
+  password = '';
+  store.del(PW_KEY);
+  $('#app').classList.add('hidden');
+  $('#login').classList.remove('hidden');
+  $('#pw').value = '';
+  $('#login-err').textContent = msg || '';
+}
+$('#btn-logout').onclick = () => logout();
+
+/* ---------- 畫面 ---------- */
+function showApp(list) {
+  $('#login').classList.add('hidden');
+  $('#app').classList.remove('hidden');
+  render(list);
+}
+
+async function reload() {
+  try { render((await api('list')).tasks); }
+  catch (e) { if (e.message !== 'AUTH') toast('載入失敗：' + e.message, true); }
+}
+
+const crewColor = {};
+function colorFor(crew) {
+  if (!crew) return 'c7';
+  if (!(crew in crewColor)) crewColor[crew] = 'c' + (Object.keys(crewColor).length % 7);
+  return crewColor[crew];
+}
+
+function render(list) {
+  tasks = list.slice().sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id, undefined, { numeric: true }));
+  const has = tasks.length > 0;
+  $('#empty').classList.toggle('hidden', has);
+  $('#gantt').classList.toggle('hidden', !has);
+  renderLegend();
+  if (!has) { gantt = null; $('#gantt').innerHTML = ''; return; }
+
+  const gTasks = tasks.map((t) => ({
+    id: t.id,
+    name: t.name,
+    start: t.start,
+    end: t.end,
+    progress: t.progress,
+    dependencies: t.dependencies,
+    custom_class: t.progress >= 100 ? 'done' : colorFor(t.crew),
+  }));
+
+  $('#gantt').innerHTML = '';
+  gantt = new Gantt('#gantt', gTasks, {
+    language: 'zh-TW',
+    view_mode: viewMode,
+    today_button: false,
+    scroll_to: ymd(addDays(new Date(), -3)),
+    // 至少留 360px 高，點色條跳出的小視窗才不會被切掉
+    container_height: Math.max(360, tasks.length * 44 + 110),
+    move_dependencies: true,
+    bar_height: 28,
+    padding: 16,
+    popup_on: 'click',
+    popup: (ctx) => {
+      const t = tasks.find((x) => x.id === ctx.task.id) || {};
+      ctx.set_title(esc(t.name || ctx.task.name));
+      ctx.set_subtitle(esc(t.crew || ''));
+      const days = diffDays(t.start, t.end) + 1;
+      ctx.set_details(
+        `${md(t.start)} – ${md(t.end)}（${days} 天）<br>進度 ${Math.round(ctx.task.progress)}%` +
+        (t.note ? `<br>${esc(t.note)}` : '')
+      );
+      ctx.add_action('編輯', (task) => { gantt.hide_popup(); openEdit(task.id); });
+    },
+    on_double_click: (task) => openEdit(task.id),
+    on_date_change: (task, start, end) => {
+      const fields = { start: ymd(start), end: ymd(end) };
+      const t = tasks.find((x) => x.id === task.id);
+      if (t) Object.assign(t, fields);
+      // 拖拉過程可能觸發多次，等手放開 0.4 秒後只存最後一次
+      clearTimeout(dateTimers[task.id]);
+      dateTimers[task.id] = setTimeout(() => {
+        queueSave('update', { id: task.id, fields }, `已更新「${task.name}」日期`);
+      }, 400);
+    },
+    on_progress_change: (task, progress) => {
+      const p = Math.round(progress / 5) * 5;
+      const t = tasks.find((x) => x.id === task.id);
+      if (t) t.progress = p;
+      queueSave('update', { id: task.id, fields: { progress: p } }, `「${task.name}」進度 ${p}%`);
+    },
+  });
+  markView();
+}
+
+function renderLegend() {
+  const crews = [...new Set(tasks.map((t) => t.crew).filter(Boolean))];
+  const swatch = { c0: '#c0663a', c1: '#5f8a55', c2: '#4a6f9e', c3: '#b08a2e', c4: '#7e5a96', c5: '#3d8580', c6: '#a64d60', c7: '#7a736a' };
+  $('#legend').innerHTML = crews.map((c) => `<span style="--c:${swatch[colorFor(c)]}">${esc(c)}</span>`).join('')
+    + (tasks.some((t) => t.progress >= 100) ? '<span style="--c:#b9b3aa">已完成</span>' : '');
+  $('#crew-list').innerHTML = crews.map((c) => `<option value="${esc(c)}">`).join('');
+}
+
+/* ---------- 檢視切換 ---------- */
+document.querySelectorAll('#views button').forEach((b) => {
+  b.onclick = () => {
+    viewMode = b.dataset.v;
+    store.set(VIEW_KEY, viewMode);
+    if (gantt) gantt.change_view_mode(viewMode);
+    markView();
+  };
+});
+function markView() {
+  document.querySelectorAll('#views button').forEach((b) => b.classList.toggle('on', b.dataset.v === viewMode));
+}
+$('#btn-today').onclick = () => gantt && gantt.scroll_current();
+$('#btn-reload').onclick = () => { reload(); toast('已重新載入'); };
+
+// 切回這個分頁時自動抓最新資料（看到對方剛改的內容）
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && password && pendingWrites === 0 && !$('#dlg').open) reload();
+});
+
+/* ---------- 新增 / 編輯 / 刪除 ---------- */
+$('#btn-add').onclick = () => openEdit(null);
+
+function openEdit(id) {
+  if (gantt) gantt.hide_popup();
+  editingId = id;
+  const t = id ? tasks.find((x) => x.id === id) : null;
+  const today = ymd(new Date());
+  const lastEnd = tasks.reduce((m, x) => (x.end > m ? x.end : m), '');
+  const defStart = lastEnd ? ymd(addDays(new Date(lastEnd + 'T00:00:00'), 1)) : today;
+
+  $('#dlg-title').textContent = t ? '編輯工項' : '新增工項';
+  $('#f-name').value = t ? t.name : '';
+  $('#f-start').value = t ? t.start : defStart;
+  $('#f-end').value = t ? t.end : defStart;
+  $('#f-crew').value = t ? t.crew : '';
+  $('#f-progress').value = t ? t.progress : 0;
+  $('#f-note').value = t ? t.note : '';
+  $('#btn-del').classList.toggle('hidden', !t);
+
+  const deps = new Set((t ? t.dependencies : '').split(',').filter(Boolean));
+  const others = tasks.filter((x) => x.id !== id);
+  $('#f-deps').innerHTML = others.length
+    ? others.map((x) => `<label><input type="checkbox" value="${esc(x.id)}" ${deps.has(x.id) ? 'checked' : ''}>${esc(x.name)}</label>`).join('')
+    : '<span class="none">（沒有其他工項）</span>';
+
+  $('#dlg').showModal();
+  if (!t) $('#f-name').focus();
+}
+
+$('#btn-cancel').onclick = () => $('#dlg').close();
+$('#f-start').addEventListener('change', () => {
+  if ($('#f-end').value < $('#f-start').value) $('#f-end').value = $('#f-start').value;
+});
+
+$('#edit-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fields = {
+    name: $('#f-name').value.trim(),
+    start: $('#f-start').value,
+    end: $('#f-end').value,
+    crew: $('#f-crew').value.trim(),
+    progress: Number($('#f-progress').value) || 0,
+    note: $('#f-note').value.trim(),
+    dependencies: [...$('#f-deps').querySelectorAll('input:checked')].map((i) => i.value).join(','),
+  };
+  if (!fields.name) return;
+  if (fields.end < fields.start) { toast('結束日不能早於開始日', true); return; }
+
+  $('#btn-save').disabled = true;
+  try {
+    if (editingId) {
+      await api('update', { id: editingId, fields });
+      toast('已儲存');
+    } else {
+      await api('add', { fields });
+      toast('已新增');
+    }
+    $('#dlg').close();
+    await reload();
+  } catch (err) {
+    if (err.message !== 'AUTH') toast('儲存失敗：' + err.message, true);
+  } finally { $('#btn-save').disabled = false; }
+});
+
+$('#btn-del').onclick = async () => {
+  const t = tasks.find((x) => x.id === editingId);
+  if (!t || !confirm(`確定刪除「${t.name}」？`)) return;
+  try {
+    await api('delete', { id: t.id });
+    $('#dlg').close();
+    toast('已刪除');
+    await reload();
+  } catch (err) {
+    if (err.message !== 'AUTH') toast('刪除失敗：' + err.message, true);
+  }
+};
+
+/* ---------- 小工具 ---------- */
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function md(s) { if (!s) return ''; const [, m, d] = s.split('-'); return `${+m}/${+d}`; }
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function diffDays(a, b) { return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+let toastTimer;
+function toast(msg, isErr) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.toggle('err', !!isErr);
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), isErr ? 4000 : 1800);
+}
+
+/* ---------- 啟動 ---------- */
+(async function init() {
+  markView();
+  if (API_URL.startsWith('PASTE_')) {
+    $('#login').classList.remove('hidden');
+    $('#login-err').textContent = '尚未設定 API_URL';
+    return;
+  }
+  if (!password) { $('#login').classList.remove('hidden'); return; }
+  try { showApp((await api('list')).tasks); }
+  catch (e) { if (e.message !== 'AUTH') { $('#login').classList.remove('hidden'); $('#login-err').textContent = '連線失敗：' + e.message; } }
+})();
+</script>
+</body>
+</html>
