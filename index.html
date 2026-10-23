@@ -55,7 +55,31 @@
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
   .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px;
     background: var(--c); margin-right: 6px; vertical-align: -1px; }
-  #chart-wrap { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  #chart-wrap { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+    display: flex; align-items: stretch; }
+  #gantt-area { flex: 1; min-width: 0; }
+
+  /* ── 左側工項清單 ── */
+  #tlist { flex: none; width: 240px; border-right: 1px solid var(--line); display: flex; flex-direction: column;
+    overflow: hidden; transition: width .2s ease; background: var(--card); }
+  #tlist.collapsed { width: 0; border-right: 0; }
+  .tl-head { height: 85px; flex: none; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 12px 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .tl-head b { color: var(--ink); font-size: 14px; }
+  .tl-body { flex: 1; overflow: hidden; position: relative; }
+  .tl-inner { position: absolute; left: 0; right: 0; top: 0; padding-top: 0; }
+  .tl-row { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; cursor: pointer;
+    border-bottom: 1px solid #f1ede7; width: 240px; }
+  .tl-row:hover, .tl-row.active { background: #faf6f1; }
+  .tl-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c); }
+  .tl-text { flex: 1; min-width: 0; line-height: 1.25; }
+  .tl-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl-row.done .tl-name { color: var(--muted); text-decoration: line-through; }
+  .tl-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl-edit { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 6px 8px; border-radius: 6px; flex: none; }
+  .tl-edit:hover { background: var(--line); color: var(--ink); }
+  #btn-list.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .gantt .bar-wrapper.flash .bar { stroke: var(--accent); stroke-width: 3; }
   #empty { padding: 48px 16px; text-align: center; color: var(--muted); }
   .hint { color: var(--muted); font-size: 13px; margin: 10px 2px 0; }
 
@@ -95,6 +119,9 @@
 
   @media (max-width: 600px) {
     header h1 { width: 100%; }
+    #tlist:not(.collapsed) { width: 150px; }
+    .tl-row { width: 150px; }
+    .tl-meta .tl-crew { display: none; }
     .row2 { grid-template-columns: 1fr; }
   }
 </style>
@@ -120,6 +147,7 @@
     <div class="seg" id="views">
       <button data-v="Day">日</button><button data-v="Week" class="on">週</button><button data-v="Month">月</button>
     </div>
+    <button class="btn" id="btn-list" title="顯示／隱藏工項清單">☰ 清單</button>
     <button class="btn" id="btn-today">今天</button>
     <button class="btn" id="btn-reload" title="重新載入">⟳</button>
     <button class="btn primary" id="btn-add">＋ 新增工項</button>
@@ -128,10 +156,16 @@
   <main>
     <div class="legend" id="legend"></div>
     <div id="chart-wrap">
-      <div id="gantt"></div>
-      <div id="empty" class="hidden">還沒有任何工項，按「＋ 新增工項」開始吧</div>
+      <aside id="tlist">
+        <div class="tl-head"><b>工項</b><span id="tl-count"></span></div>
+        <div class="tl-body"><div class="tl-inner" id="tl-inner"></div></div>
+      </aside>
+      <div id="gantt-area">
+        <div id="gantt"></div>
+        <div id="empty" class="hidden">還沒有任何工項，按「＋ 新增工項」開始吧</div>
+      </div>
     </div>
-    <p class="hint">拖拉色條可改日期，拉右端改工期，拖拉色條內的小圓點改進度；點色條可編輯。</p>
+    <p class="hint">拖拉色條可改日期，拉右端改工期，拖拉色條內的小圓點改進度；點色條可編輯。左側清單點一下會跳到該工項。</p>
   </main>
 </section>
 
@@ -178,6 +212,7 @@ const store = {
 
 const PW_KEY = 'reno-gantt-pw';
 const VIEW_KEY = 'reno-gantt-view';
+const LIST_KEY = 'reno-gantt-list';
 const $ = (s) => document.querySelector(s);
 
 let password = store.get(PW_KEY) || '';
@@ -266,7 +301,7 @@ function render(list) {
   $('#empty').classList.toggle('hidden', has);
   $('#gantt').classList.toggle('hidden', !has);
   renderLegend();
-  if (!has) { gantt = null; $('#gantt').innerHTML = ''; return; }
+  if (!has) { gantt = null; $('#gantt').innerHTML = ''; renderList(); return; }
 
   const gTasks = tasks.map((t) => ({
     id: t.id,
@@ -319,7 +354,68 @@ function render(list) {
       queueSave('update', { id: task.id, fields: { progress: p } }, `「${task.name}」進度 ${p}%`);
     },
   });
+  // 甘特圖上下捲動時，左側清單跟著捲
+  gantt.$container.addEventListener('scroll', syncListScroll, { passive: true });
+  renderList();
   markView();
+}
+
+/* ---------- 左側工項清單 ---------- */
+const SWATCH = { c0: '#c0663a', c1: '#5f8a55', c2: '#4a6f9e', c3: '#b08a2e', c4: '#7e5a96', c5: '#3d8580', c6: '#a64d60', c7: '#7a736a', done: '#b9b3aa' };
+
+function renderList() {
+  const inner = $('#tl-inner');
+  $('#tl-count').textContent = tasks.length ? `${tasks.length} 項` : '';
+  if (!tasks.length) { inner.innerHTML = ''; return; }
+  inner.innerHTML = tasks.map((t) => {
+    const done = t.progress >= 100;
+    const c = SWATCH[done ? 'done' : colorFor(t.crew)];
+    const meta = `${t.crew ? `<span class="tl-crew">${esc(t.crew)} · </span>` : ''}${md(t.start)}–${md(t.end)} · ${Math.round(t.progress)}%`;
+    return `<div class="tl-row${done ? ' done' : ''}" data-id="${esc(t.id)}" title="${esc(t.name)}">
+      <span class="tl-dot" style="--c:${c}"></span>
+      <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${meta}</div></div>
+      <button class="tl-edit" data-edit="${esc(t.id)}" title="編輯">✎</button>
+    </div>`;
+  }).join('');
+  syncListScroll();
+}
+
+function syncListScroll() {
+  if (!gantt) return;
+  $('#tl-inner').style.transform = `translateY(${-gantt.$container.scrollTop}px)`;
+}
+
+$('#tl-inner').addEventListener('click', (e) => {
+  const editId = e.target.closest('[data-edit]')?.dataset.edit;
+  if (editId) { openEdit(editId); return; }
+  const row = e.target.closest('.tl-row');
+  if (row) focusTask(row.dataset.id);
+});
+
+/** 捲到該工項的色條並閃一下 */
+function focusTask(id) {
+  if (!gantt) return;
+  const wrap = gantt.$svg.querySelector(`.bar-wrapper[data-id="${CSS.escape(id)}"]`);
+  const bar = wrap && wrap.querySelector('.bar');
+  if (!bar) return;
+  const x = Number(bar.getAttribute('x')) || 0;
+  gantt.$container.scrollTo({ left: Math.max(0, x - 60), behavior: 'smooth' });
+  document.querySelectorAll('.tl-row.active').forEach((r) => r.classList.remove('active'));
+  document.querySelector(`.tl-row[data-id="${CSS.escape(id)}"]`)?.classList.add('active');
+  wrap.classList.add('flash');
+  setTimeout(() => wrap.classList.remove('flash'), 1200);
+}
+
+function setListOpen(open, remember) {
+  $('#tlist').classList.toggle('collapsed', !open);
+  $('#btn-list').classList.toggle('on', open);
+  if (remember) store.set(LIST_KEY, open ? '1' : '0');
+}
+$('#btn-list').onclick = () => setListOpen($('#tlist').classList.contains('collapsed'), true);
+// 預設：電腦打開、手機收起；之後記住使用者的選擇
+{
+  const saved = store.get(LIST_KEY);
+  setListOpen(saved ? saved === '1' : window.innerWidth > 600, false);
 }
 
 function renderLegend() {
