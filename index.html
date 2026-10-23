@@ -44,7 +44,7 @@
   .btn:disabled { opacity: .5; cursor: default; }
 
   /* ── 主畫面 ── */
-  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
     padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   header h1 { font-size: 18px; margin: 0 auto 0 0; }
   .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
@@ -76,10 +76,28 @@
   .tl-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tl-row.done .tl-name { color: var(--muted); text-decoration: line-through; }
   .tl-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tl-edit { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 6px 8px; border-radius: 6px; flex: none; }
-  .tl-edit:hover { background: var(--line); color: var(--ink); }
   #btn-list.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn-ms { color: var(--ms); border-color: color-mix(in srgb, var(--ms) 45%, var(--line)); font-weight: 600; }
+  .btn-ms:hover { border-color: var(--ms); }
   .gantt .bar-wrapper.flash .bar { stroke: var(--accent); stroke-width: 3; }
+
+  /* ── 注意事項（菱形） ── */
+  :root { --ms: #d9822b; --ms-late: #c0392b; --ms-done: #b9b3aa; }
+  .gantt .bar-wrapper.ms .bar, .gantt .bar-wrapper.ms-late .bar, .gantt .bar-wrapper.ms-done .bar { fill: transparent; outline: none; }
+  .gantt .bar-wrapper.ms .bar-progress, .gantt .bar-wrapper.ms-late .bar-progress, .gantt .bar-wrapper.ms-done .bar-progress,
+  .gantt .bar-wrapper.ms .handle, .gantt .bar-wrapper.ms-late .handle, .gantt .bar-wrapper.ms-done .handle { display: none; }
+  .gantt .ms-diamond { pointer-events: none; stroke: #fff; stroke-width: 1.5; fill: var(--ms); }
+  .gantt .bar-wrapper.ms-late .ms-diamond { fill: var(--ms-late); }
+  .gantt .bar-wrapper.ms-done .ms-diamond { fill: var(--ms-done); }
+  .gantt .bar-wrapper.ms .bar-label, .gantt .bar-wrapper.ms-late .bar-label { font-weight: 600; }
+  .gantt .bar-wrapper.ms-late .bar-label { fill: var(--ms-late); }
+  .gantt .bar-wrapper.ms-done .bar-label { fill: var(--muted); text-decoration: line-through; }
+  .gantt .bar-wrapper.flash .ms-diamond { stroke: var(--accent); stroke-width: 3; }
+
+  .tl-diamond { width: 9px; height: 9px; flex: none; transform: rotate(45deg); background: var(--c); margin: 0 1px; }
+  .tl-row.late .tl-meta { color: var(--ms-late); font-weight: 600; }
+  .tl-check { flex: none; width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+  .legend .lg-ms::before { border-radius: 1px; transform: rotate(45deg) scale(.85); }
   #empty { padding: 48px 16px; text-align: center; color: var(--muted); }
   .hint { color: var(--muted); font-size: 13px; margin: 10px 2px 0; }
 
@@ -110,6 +128,10 @@
   .deps .none { color: var(--muted); }
   .actions { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
   .actions .spacer { flex: 1; }
+  #dlg.is-ms .only-task, #dlg:not(.is-ms) .only-ms { display: none; }
+  #dlg.is-ms { border-top: 5px solid var(--ms); }
+  #dlg:not(.is-ms) { border-top: 5px solid var(--accent); }
+  #dlg-title .ms-icon { color: var(--ms); margin-right: 6px; }
 
   /* ── 提示訊息 ── */
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff;
@@ -150,7 +172,8 @@
     <button class="btn" id="btn-list" title="顯示／隱藏工項清單">☰ 清單</button>
     <button class="btn" id="btn-today">今天</button>
     <button class="btn" id="btn-reload" title="重新載入">⟳</button>
-    <button class="btn primary" id="btn-add">＋ 新增工項</button>
+    <button class="btn primary" id="btn-add">＋ 工項</button>
+    <button class="btn btn-ms" id="btn-add-ms">＋ 注意事項</button>
     <button class="btn" id="btn-logout" title="登出">登出</button>
   </header>
   <main>
@@ -162,10 +185,10 @@
       </aside>
       <div id="gantt-area">
         <div id="gantt"></div>
-        <div id="empty" class="hidden">還沒有任何工項，按「＋ 新增工項」開始吧</div>
+        <div id="empty" class="hidden">還沒有任何項目，按「＋ 工項」或「＋ 注意事項」開始吧</div>
       </div>
     </div>
-    <p class="hint">拖拉色條可改日期，拉右端改工期，拖拉色條內的小圓點改進度；點色條可編輯。左側清單點一下會跳到該工項。</p>
+    <p class="hint">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，過期未完成會變紅，在清單打勾即完成。</p>
   </main>
 </section>
 
@@ -173,17 +196,19 @@
 <dialog id="dlg">
   <form id="edit-form" method="dialog">
     <h2 id="dlg-title">編輯工項</h2>
-    <label>工項名稱<input type="text" id="f-name" required maxlength="60"></label>
+    <label><span id="l-name">工項名稱</span><input type="text" id="f-name" required maxlength="60"></label>
     <div class="row2">
-      <label>開始日<input type="date" id="f-start" required></label>
-      <label>結束日<input type="date" id="f-end" required></label>
+      <label><span id="l-start">開始日</span><input type="date" id="f-start" required></label>
+      <label class="only-task">結束日<input type="date" id="f-end" required></label>
+      <label class="only-ms" style="align-self:end"><span style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px;padding:10px 0">
+        <input type="checkbox" id="f-done" class="tl-check">已完成</span></label>
     </div>
     <div class="row2">
-      <label>工班<input type="text" id="f-crew" list="crew-list" maxlength="30"></label>
-      <label>進度（%）<input type="number" id="f-progress" min="0" max="100" step="5"></label>
+      <label><span id="l-crew">工班</span><input type="text" id="f-crew" list="crew-list" maxlength="30"></label>
+      <label class="only-task">進度（%）<input type="number" id="f-progress" min="0" max="100" step="5"></label>
     </div>
     <datalist id="crew-list"></datalist>
-    <label>前置工項（要先完成的）<div class="deps" id="f-deps"></div></label>
+    <label><span id="l-deps">前置工項（要先完成的）</span><div class="deps" id="f-deps"></div></label>
     <label>備註<textarea id="f-note" rows="2" maxlength="300"></textarea></label>
     <div class="actions">
       <button class="btn danger" type="button" id="btn-del">刪除</button>
@@ -288,6 +313,21 @@ async function reload() {
   catch (e) { if (e.message !== 'AUTH') toast('載入失敗：' + e.message, true); }
 }
 
+const isMs = (t) => t.type === 'milestone';
+const todayStr = () => ymd(new Date());
+/** 注意事項狀態：done / late / open */
+function msState(t) {
+  if (t.progress >= 100) return 'done';
+  return t.start < todayStr() ? 'late' : 'open';
+}
+function msMeta(t) {
+  const st = msState(t);
+  if (st === 'done') return `截止 ${md(t.start)} · 已完成`;
+  const d = diffDays(todayStr(), t.start);
+  if (st === 'late') return `截止 ${md(t.start)} · 逾期 ${-d} 天`;
+  return `截止 ${md(t.start)} · ${d === 0 ? '今天' : `剩 ${d} 天`}`;
+}
+
 const crewColor = {};
 function colorFor(crew) {
   if (!crew) return 'c7';
@@ -307,10 +347,12 @@ function render(list) {
     id: t.id,
     name: t.name,
     start: t.start,
-    end: t.end,
-    progress: t.progress,
+    end: isMs(t) ? t.start : t.end,
+    progress: isMs(t) ? 0 : t.progress,
     dependencies: t.dependencies,
-    custom_class: t.progress >= 100 ? 'done' : colorFor(t.crew),
+    custom_class: isMs(t)
+      ? { done: 'ms-done', late: 'ms-late', open: 'ms' }[msState(t)]
+      : t.progress >= 100 ? 'done' : colorFor(t.crew),
   }));
 
   $('#gantt').innerHTML = '';
@@ -325,21 +367,11 @@ function render(list) {
     bar_height: 28,
     padding: 16,
     popup_on: 'click',
-    popup: (ctx) => {
-      const t = tasks.find((x) => x.id === ctx.task.id) || {};
-      ctx.set_title(esc(t.name || ctx.task.name));
-      ctx.set_subtitle(esc(t.crew || ''));
-      const days = diffDays(t.start, t.end) + 1;
-      ctx.set_details(
-        `${md(t.start)} – ${md(t.end)}（${days} 天）<br>進度 ${Math.round(ctx.task.progress)}%` +
-        (t.note ? `<br>${esc(t.note)}` : '')
-      );
-      ctx.add_action('編輯', (task) => { gantt.hide_popup(); openEdit(task.id); });
-    },
-    on_double_click: (task) => openEdit(task.id),
+    // 點一下色條／菱形就直接打開修改視窗（拖拉時不會觸發）
+    popup: (ctx) => { openEdit(ctx.task.id); return false; },
     on_date_change: (task, start, end) => {
-      const fields = { start: ymd(start), end: ymd(end) };
       const t = tasks.find((x) => x.id === task.id);
+      const fields = t && isMs(t) ? { start: ymd(start), end: ymd(start) } : { start: ymd(start), end: ymd(end) };
       if (t) Object.assign(t, fields);
       // 拖拉過程可能觸發多次，等手放開 0.4 秒後只存最後一次
       clearTimeout(dateTimers[task.id]);
@@ -348,16 +380,58 @@ function render(list) {
       }, 400);
     },
     on_progress_change: (task, progress) => {
-      const p = Math.round(progress / 5) * 5;
       const t = tasks.find((x) => x.id === task.id);
+      if (t && isMs(t)) return;
+      const p = Math.round(progress / 5) * 5;
       if (t) t.progress = p;
       queueSave('update', { id: task.id, fields: { progress: p } }, `「${task.name}」進度 ${p}%`);
     },
   });
   // 甘特圖上下捲動時，左側清單跟著捲
   gantt.$container.addEventListener('scroll', syncListScroll, { passive: true });
+  drawDiamonds();
+  // 拖拉或切換檢視時色條位置會變，菱形跟著重畫
+  if (diamondObserver) diamondObserver.disconnect();
+  diamondObserver = new MutationObserver(() => requestAnimationFrame(drawDiamonds));
+  diamondObserver.observe(gantt.$svg, { subtree: true, attributes: true, attributeFilter: ['x', 'width'], childList: true });
   renderList();
   markView();
+}
+
+/* ---------- 注意事項：在色條位置畫菱形 ---------- */
+let diamondObserver = null;
+function drawDiamonds() {
+  if (!gantt) return;
+  gantt.$svg.querySelectorAll('.bar-wrapper.ms, .bar-wrapper.ms-late, .bar-wrapper.ms-done').forEach((w) => {
+    const bar = w.querySelector('.bar');
+    if (!bar) return;
+    const x = +bar.getAttribute('x'), y = +bar.getAttribute('y');
+    const wdt = +bar.getAttribute('width'), h = +bar.getAttribute('height');
+    const cx = x + wdt / 2, cy = y + h / 2, r = 10;
+    const pts = `${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`;
+    let d = w.querySelector('.ms-diamond');
+    if (!d) {
+      d = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      d.setAttribute('class', 'ms-diamond');
+      bar.after(d);
+    }
+    if (d.getAttribute('points') !== pts) d.setAttribute('points', pts);
+    // 標籤放在菱形右邊
+    const label = w.querySelector('.bar-label');
+    if (label) {
+      const lx = String(Math.max(x + wdt, cx + r) + 6);
+      if (label.getAttribute('x') !== lx) label.setAttribute('x', lx);
+      label.classList.add('big');
+    }
+  });
+}
+
+async function toggleDone(id) {
+  const t = tasks.find((x) => x.id === id);
+  if (!t) return;
+  t.progress = t.progress >= 100 ? 0 : 100;
+  render(tasks);
+  await queueSave('update', { id, fields: { progress: t.progress } }, t.progress >= 100 ? `「${t.name}」完成 ✓` : `「${t.name}」改回未完成`);
 }
 
 /* ---------- 左側工項清單 ---------- */
@@ -368,13 +442,21 @@ function renderList() {
   $('#tl-count').textContent = tasks.length ? `${tasks.length} 項` : '';
   if (!tasks.length) { inner.innerHTML = ''; return; }
   inner.innerHTML = tasks.map((t) => {
+    if (isMs(t)) {
+      const st = msState(t);
+      const c = { done: 'var(--ms-done)', late: 'var(--ms-late)', open: 'var(--ms)' }[st];
+      return `<div class="tl-row${st === 'done' ? ' done' : ''}${st === 'late' ? ' late' : ''}" data-id="${esc(t.id)}" title="${esc(t.name)}">
+      <span class="tl-diamond" style="--c:${c}"></span>
+      <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${esc(msMeta(t))}</div></div>
+      <input type="checkbox" class="tl-check" data-done="${esc(t.id)}" ${st === 'done' ? 'checked' : ''} title="完成">
+    </div>`;
+    }
     const done = t.progress >= 100;
     const c = SWATCH[done ? 'done' : colorFor(t.crew)];
     const meta = `${t.crew ? `<span class="tl-crew">${esc(t.crew)} · </span>` : ''}${md(t.start)}–${md(t.end)} · ${Math.round(t.progress)}%`;
     return `<div class="tl-row${done ? ' done' : ''}" data-id="${esc(t.id)}" title="${esc(t.name)}">
       <span class="tl-dot" style="--c:${c}"></span>
       <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${meta}</div></div>
-      <button class="tl-edit" data-edit="${esc(t.id)}" title="編輯">✎</button>
     </div>`;
   }).join('');
   syncListScroll();
@@ -386,10 +468,10 @@ function syncListScroll() {
 }
 
 $('#tl-inner').addEventListener('click', (e) => {
-  const editId = e.target.closest('[data-edit]')?.dataset.edit;
-  if (editId) { openEdit(editId); return; }
+  const doneId = e.target.closest('[data-done]')?.dataset.done;
+  if (doneId) { e.preventDefault(); toggleDone(doneId); return; }
   const row = e.target.closest('.tl-row');
-  if (row) focusTask(row.dataset.id);
+  if (row) { focusTask(row.dataset.id); openEdit(row.dataset.id); }
 });
 
 /** 捲到該工項的色條並閃一下 */
@@ -419,11 +501,16 @@ $('#btn-list').onclick = () => setListOpen($('#tlist').classList.contains('colla
 }
 
 function renderLegend() {
-  const crews = [...new Set(tasks.map((t) => t.crew).filter(Boolean))];
+  const crews = [...new Set(tasks.filter((t) => !isMs(t)).map((t) => t.crew).filter(Boolean))];
+  const allCrews = [...new Set(tasks.map((t) => t.crew).filter(Boolean))];
   const swatch = { c0: '#c0663a', c1: '#5f8a55', c2: '#4a6f9e', c3: '#b08a2e', c4: '#7e5a96', c5: '#3d8580', c6: '#a64d60', c7: '#7a736a' };
+  const ms = tasks.filter(isMs);
+  const late = ms.filter((t) => msState(t) === 'late').length;
   $('#legend').innerHTML = crews.map((c) => `<span style="--c:${swatch[colorFor(c)]}">${esc(c)}</span>`).join('')
-    + (tasks.some((t) => t.progress >= 100) ? '<span style="--c:#b9b3aa">已完成</span>' : '');
-  $('#crew-list').innerHTML = crews.map((c) => `<option value="${esc(c)}">`).join('');
+    + (tasks.some((t) => !isMs(t) && t.progress >= 100) ? '<span style="--c:#b9b3aa">已完成</span>' : '')
+    + (ms.length ? '<span class="lg-ms" style="--c:var(--ms)">注意事項</span>' : '')
+    + (late ? `<span class="lg-ms" style="--c:var(--ms-late);color:var(--ms-late);font-weight:600">逾期 ${late} 項</span>` : '');
+  $('#crew-list').innerHTML = allCrews.map((c) => `<option value="${esc(c)}">`).join('');
 }
 
 /* ---------- 檢視切換 ---------- */
@@ -447,30 +534,48 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------- 新增 / 編輯 / 刪除 ---------- */
-$('#btn-add').onclick = () => openEdit(null);
+$('#btn-add').onclick = () => openEdit(null, 'task');
+$('#btn-add-ms').onclick = () => openEdit(null, 'milestone');
 
-function openEdit(id) {
+let editType = 'task';
+function setEditType(type) {
+  editType = type;
+  const ms = type === 'milestone';
+  $('#dlg').classList.toggle('is-ms', ms);
+  $('#l-name').textContent = ms ? '要注意的事' : '工項名稱';
+  $('#l-start').textContent = ms ? '截止日' : '開始日';
+  $('#l-crew').textContent = ms ? '對象／負責人（選填）' : '工班';
+  $('#l-deps').textContent = ms ? '相關工項（選填，會畫箭頭連過來）' : '前置工項（要先完成的）';
+  const verb = editingId ? '修改' : '新增';
+  $('#dlg-title').innerHTML = ms ? `<span class="ms-icon">◆</span>${verb}注意事項` : `${verb}工項`;
+}
+
+function openEdit(id, newType = 'task') {
+  if ($('#dlg').open) return;
   if (gantt) gantt.hide_popup();
   editingId = id;
   const t = id ? tasks.find((x) => x.id === id) : null;
+  if (id && !t) return;
+  const type = t ? (isMs(t) ? 'milestone' : 'task') : newType;
   const today = ymd(new Date());
   const lastEnd = tasks.reduce((m, x) => (x.end > m ? x.end : m), '');
   const defStart = lastEnd ? ymd(addDays(new Date(lastEnd + 'T00:00:00'), 1)) : today;
 
-  $('#dlg-title').textContent = t ? '編輯工項' : '新增工項';
   $('#f-name').value = t ? t.name : '';
-  $('#f-start').value = t ? t.start : defStart;
+  $('#f-start').value = t ? t.start : (type === 'milestone' ? today : defStart);
   $('#f-end').value = t ? t.end : defStart;
   $('#f-crew').value = t ? t.crew : '';
   $('#f-progress').value = t ? t.progress : 0;
   $('#f-note').value = t ? t.note : '';
+  $('#f-done').checked = !!(t && t.progress >= 100);
   $('#btn-del').classList.toggle('hidden', !t);
+  setEditType(type);
 
   const deps = new Set((t ? t.dependencies : '').split(',').filter(Boolean));
-  const others = tasks.filter((x) => x.id !== id);
+  const others = tasks.filter((x) => x.id !== id && !isMs(x));
   $('#f-deps').innerHTML = others.length
     ? others.map((x) => `<label><input type="checkbox" value="${esc(x.id)}" ${deps.has(x.id) ? 'checked' : ''}>${esc(x.name)}</label>`).join('')
-    : '<span class="none">（沒有其他工項）</span>';
+    : '<span class="none">（還沒有工項）</span>';
 
   $('#dlg').showModal();
   if (!t) $('#f-name').focus();
@@ -483,14 +588,16 @@ $('#f-start').addEventListener('change', () => {
 
 $('#edit-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  const ms = editType === 'milestone';
   const fields = {
     name: $('#f-name').value.trim(),
     start: $('#f-start').value,
-    end: $('#f-end').value,
+    end: ms ? $('#f-start').value : $('#f-end').value,
     crew: $('#f-crew').value.trim(),
-    progress: Number($('#f-progress').value) || 0,
+    progress: ms ? ($('#f-done').checked ? 100 : 0) : Number($('#f-progress').value) || 0,
     note: $('#f-note').value.trim(),
     dependencies: [...$('#f-deps').querySelectorAll('input:checked')].map((i) => i.value).join(','),
+    type: ms ? 'milestone' : 'task',
   };
   if (!fields.name) return;
   if (fields.end < fields.start) { toast('結束日不能早於開始日', true); return; }
@@ -513,7 +620,15 @@ $('#edit-form').addEventListener('submit', async (e) => {
 
 $('#btn-del').onclick = async () => {
   const t = tasks.find((x) => x.id === editingId);
-  if (!t || !confirm(`確定刪除「${t.name}」？`)) return;
+  if (!t) return;
+  const btn = $('#btn-del');
+  if (!btn.dataset.armed) {
+    btn.dataset.armed = '1';
+    btn.textContent = '再按一次確認刪除';
+    setTimeout(() => { delete btn.dataset.armed; btn.textContent = '刪除'; }, 3000);
+    return;
+  }
+  delete btn.dataset.armed; btn.textContent = '刪除';
   try {
     await api('delete', { id: t.id });
     $('#dlg').close();

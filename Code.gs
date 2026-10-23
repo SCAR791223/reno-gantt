@@ -9,8 +9,11 @@
  */
 
 const SHEET_NAME = '時程';
-const HEADERS = ['id', '工項', '開始', '結束', '進度', '相依', '工班', '備註'];
-const COL = { id: 1, name: 2, start: 3, end: 4, progress: 5, deps: 6, crew: 7, note: 8 };
+const HEADERS = ['id', '工項', '開始', '結束', '進度', '相依', '工班', '備註', '類型'];
+const COL = { id: 1, name: 2, start: 3, end: 4, progress: 5, deps: 6, crew: 7, note: 8, type: 9 };
+// 「類型」欄：空白 = 一般工項；「截止」= 注意事項（菱形）
+const TYPE_MS = '截止';
+const isMsCell_ = (v) => /截止|注意|里程碑|milestone/i.test(String(v || ''));
 
 /* ───────────────────────── 第一次使用：手動執行一次 ───────────────────────── */
 
@@ -36,10 +39,10 @@ function setup() {
     const today = new Date();
     const d = (offset) => fmtDate_(new Date(today.getTime() + offset * 86400000), ss);
     sh.getRange(2, 1, 4, HEADERS.length).setValues([
-      ['T1', '拆除工程', d(0), d(3), 0, '', '拆除班', ''],
-      ['T2', '水電配管', d(4), d(10), 0, 'T1', '水電', ''],
-      ['T3', '泥作',     d(11), d(20), 0, 'T2', '泥作', ''],
-      ['T4', '木作',     d(21), d(35), 0, 'T3', '木工', '範例資料，可刪除'],
+      ['T1', '拆除工程', d(0), d(3), 0, '', '拆除班', '', ''],
+      ['T2', '水電配管', d(4), d(10), 0, 'T1', '水電', '', ''],
+      ['T3', '泥作',     d(11), d(20), 0, 'T2', '泥作', '', ''],
+      ['T4', '木作',     d(21), d(35), 0, 'T3', '木工', '範例資料，可刪除', ''],
     ]);
   }
 
@@ -127,6 +130,7 @@ function listTasks_() {
       dependencies: String(r[COL.deps - 1] || '').split(/[,，、\s]+/).filter(Boolean).join(','),
       crew: String(r[COL.crew - 1] || '').trim(),
       note: String(r[COL.note - 1] || '').trim(),
+      type: isMsCell_(r[COL.type - 1]) ? 'milestone' : 'task',
     });
   });
 
@@ -185,6 +189,7 @@ function writeFields_(sh, row, f) {
   if ('dependencies' in f) set(COL.deps, String(f.dependencies || ''));
   if ('crew' in f)         set(COL.crew, String(f.crew || '').trim());
   if ('note' in f)         set(COL.note, String(f.note || '').trim());
+  if ('type' in f)         set(COL.type, f.type === 'milestone' ? TYPE_MS : '');
 
   // 確保結束日不早於開始日
   const ss = sh.getParent();
@@ -205,12 +210,18 @@ function readRow_(sh, row) {
     dependencies: String(r[5] || ''),
     crew: String(r[6] || ''),
     note: String(r[7] || ''),
+    type: isMsCell_(r[8]) ? 'milestone' : 'task',
   };
 }
 
 function sheet_() {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
   if (!sh) throw new Error('找不到「' + SHEET_NAME + '」工作表，請先執行 setup');
+  // 舊版試算表沒有新加的欄位，自動補上標題
+  if (sh.getLastColumn() < HEADERS.length) {
+    sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS])
+      .setFontWeight('bold').setBackground('#f1f3f4');
+  }
   return sh;
 }
 
