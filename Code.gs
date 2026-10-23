@@ -10,8 +10,9 @@
  */
 
 const SHEET_NAME = '時程';
-const HEADERS = ['id', '工項', '開始', '結束', '進度', '相依', '工班', '備註', '類型'];
-const COL = { id: 1, name: 2, start: 3, end: 4, progress: 5, deps: 6, crew: 7, note: 8, type: 9 };
+const HEADERS = ['id', '工項', '開始', '結束', '進度', '相依', '工班', '備註', '類型', '排序'];
+const COL = { id: 1, name: 2, start: 3, end: 4, progress: 5, deps: 6, crew: 7, note: 8, type: 9, order: 10 };
+// 「排序」欄：網頁上拖拉清單決定的順序；空白的照開始日期排在後面
 // 「類型」欄：空白 = 一般工項；「截止」= 注意事項（菱形）
 const TYPE_MS = '截止';
 const isMsCell_ = (v) => /截止|注意|里程碑|milestone/i.test(String(v || ''));
@@ -40,10 +41,10 @@ function setup() {
     const today = new Date();
     const d = (offset) => fmtDate_(new Date(today.getTime() + offset * 86400000), ss);
     sh.getRange(2, 1, 4, HEADERS.length).setValues([
-      ['T1', '拆除工程', d(0), d(3), 0, '', '拆除班', '', ''],
-      ['T2', '水電配管', d(4), d(10), 0, 'T1', '水電', '', ''],
-      ['T3', '泥作',     d(11), d(20), 0, 'T2', '泥作', '', ''],
-      ['T4', '木作',     d(21), d(35), 0, 'T3', '木工', '範例資料，可刪除', ''],
+      ['T1', '拆除工程', d(0), d(3), 0, '', '拆除', '', '', ''],
+      ['T2', '水電配管', d(4), d(10), 0, 'T1', '水電', '', '', ''],
+      ['T3', '泥作',     d(11), d(20), 0, 'T2', '泥作', '', '', ''],
+      ['T4', '木作',     d(21), d(35), 0, 'T3', '木工', '範例資料，可刪除', '', ''],
     ]);
   }
 
@@ -62,7 +63,7 @@ function doGet() {
 
 /**
  * 所有請求都用 POST，body 是 JSON 文字：
- *   { password?, key?, action: 'list' | 'update' | 'add' | 'delete' | 'shareKey', ... }
+ *   { password?, key?, action: 'list' | 'update' | 'add' | 'delete' | 'reorder' | 'shareKey', ... }
  * password = 修改密碼；key = 分享連結裡的瀏覽鑰匙（只能 list）。
  */
 function doPost(e) {
@@ -89,6 +90,7 @@ function doPost(e) {
       case 'update': return json_({ ok: true, task: withLock_(() => updateTask_(req.id, req.fields)) });
       case 'add':    return json_({ ok: true, task: withLock_(() => addTask_(req.fields)) });
       case 'delete': return json_({ ok: true, id: withLock_(() => deleteTask_(req.id)) });
+      case 'reorder': return json_({ ok: true, n: withLock_(() => reorder_(req.ids)) });
       default:       return json_({ ok: false, error: '未知的動作' });
     }
   } catch (err) {
@@ -137,6 +139,7 @@ function listTasks_() {
       crew: String(r[COL.crew - 1] || '').trim(),
       note: String(r[COL.note - 1] || '').trim(),
       type: isMsCell_(r[COL.type - 1]) ? 'milestone' : 'task',
+      order: orderOf_(r[COL.order - 1]),
     });
   });
 
@@ -163,6 +166,9 @@ function addTask_(fields) {
   sh.appendRow([id]);
   const row = sh.getLastRow();
   writeFields_(sh, row, Object.assign({ progress: 0, end: fields.start }, fields));
+  // 已經手動排過順序的話，新項目排在最後
+  const orders = row > 2 ? sh.getRange(2, COL.order, row - 2, 1).getValues().map(([v]) => orderOf_(v)).filter((v) => v !== null) : [];
+  if (orders.length) sh.getRange(row, COL.order).setValue(Math.max.apply(null, orders) + 1);
   return readRow_(sh, row);
 }
 
@@ -182,6 +188,28 @@ function deleteTask_(id) {
     rng.setValues(deps);
   }
   return id;
+}
+
+/** 依網頁拖拉後的順序，把 1、2、3… 寫進「排序」欄 */
+function reorder_(ids) {
+  if (!Array.isArray(ids) || !ids.length) throw new Error('沒有順序資料');
+  const sh = sheet_();
+  const last = sh.getLastRow();
+  if (last < 2) return 0;
+  const pos = {};
+  ids.forEach((id, i) => { pos[String(id)] = i + 1; });
+  const rows = sh.getRange(2, COL.id, last - 1, 1).getValues();
+  const rng = sh.getRange(2, COL.order, last - 1, 1);
+  const cur = rng.getValues();
+  // 沒在清單裡的（例如網頁開著時有人在 Sheets 新增的列）排在最後
+  let extra = ids.length;
+  const out = rows.map(([id], i) => {
+    const k = String(id).trim();
+    if (k in pos) return [pos[k]];
+    return [k ? ++extra : cur[i][0]];
+  });
+  rng.setValues(out);
+  return ids.length;
 }
 
 /* ───────────────────────── 工具函式 ───────────────────────── */
@@ -217,7 +245,14 @@ function readRow_(sh, row) {
     crew: String(r[6] || ''),
     note: String(r[7] || ''),
     type: isMsCell_(r[8]) ? 'milestone' : 'task',
+    order: orderOf_(r[9]),
   };
+}
+
+function orderOf_(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  return isFinite(n) ? n : null;
 }
 
 function sheet_() {

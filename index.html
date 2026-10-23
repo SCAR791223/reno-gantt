@@ -74,6 +74,12 @@
   .tl-row { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; cursor: pointer;
     border-bottom: 1px solid #f1ede7; width: var(--tl-w, 260px); }
   .tl-row:hover, .tl-row.active { background: #faf6f1; }
+  .tl-row { transition: transform .15s ease; background: var(--card); position: relative; }
+  .tl-row.lifting { transition: none; z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,.14); background: #fff; }
+  .tl-grip { flex: none; width: 14px; margin: 0 -4px 0 -8px; align-self: stretch; display: grid; place-items: center;
+    color: #c9c2b8; cursor: grab; margin-right: 0; touch-action: none; user-select: none; font-size: 15px; letter-spacing: -3px; }
+  .tl-grip:hover, .tl-row.lifting .tl-grip { color: var(--ink); }
+  .tl-row.lifting .tl-grip { cursor: grabbing; }
   .tl-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c); }
   .tl-text { flex: 1; min-width: 0; line-height: 1.25; }
   .tl-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -211,7 +217,7 @@
         <div id="empty-filter" class="hidden">這個人目前沒有項目，上方「只看」改回「全部」就能看到全部</div>
       </div>
     </div>
-    <p class="hint edit-only">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，箭頭指向它要先完成的工程；過期或晚於開工會變紅，在清單打勾即完成。清單太窄可以拖它的右邊緣拉寬。</p>
+    <p class="hint edit-only">點色條、菱形或左側清單就能修改；拖拉色條改日期，拉右端改工期，拖色條內小圓點改進度。◆ 是注意事項，箭頭指向它要先完成的工程；過期或晚於開工會變紅，在清單打勾即完成。按住清單左邊的 ⋮⋮ 上下拖可以調整順序；清單太窄可以拖它的右邊緣拉寬。</p>
     <p class="hint ro-only hidden">點色條、菱形或左側清單可以看詳細內容。◆ 是注意事項，紅色代表已過期還沒完成。</p>
   </main>
 </section>
@@ -476,7 +482,9 @@ function colorFor(crew) {
 
 function render(list) {
   list.forEach((t) => { if (t.crew === '我們（屋主）') t.crew = '屋主'; });
-  tasks = list.slice().sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id, undefined, { numeric: true }));
+  // 有手動排過（排序欄有值）照排序；沒排過的照開始日期，排在後面
+  const ord = (t) => (t.order === null || t.order === undefined || t.order === '' ? Infinity : Number(t.order));
+  tasks = list.slice().sort((a, b) => (ord(a) - ord(b)) || a.start.localeCompare(b.start) || a.id.localeCompare(b.id, undefined, { numeric: true }));
   renderWho();
   shown = who ? tasks.filter((t) => t.crew === who) : tasks;
   const ids = new Set(shown.map((t) => t.id));
@@ -615,7 +623,7 @@ function renderList() {
       const st = msState(t);
       const c = msColor(t);
       return `<div class="tl-row${st === 'done' ? ' done' : ''}${st === 'late' ? ' late' : ''}" data-id="${esc(t.id)}" title="${esc(t.name)}">
-      <span class="tl-diamond" style="--c:${c}"></span>
+      ${GRIP}<span class="tl-diamond" style="--c:${c}"></span>
       <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${t.crew ? `<span class="tl-crew">${esc(t.crew)} · </span>` : ''}${esc(msMeta(t))}${msTooLate(t) ? `<span class="tl-warn"> · ⚠ 晚於${esc(msTooLate(t).name)}開工</span>` : ''}</div></div>
       <input type="checkbox" class="tl-check" data-done="${esc(t.id)}" ${st === 'done' ? 'checked' : ''} ${role === 'view' ? 'disabled' : ''} title="完成">
     </div>`;
@@ -624,7 +632,7 @@ function renderList() {
     const c = SWATCH[done ? 'done' : colorFor(t.crew)];
     const meta = `${t.crew ? `<span class="tl-crew">${esc(t.crew)} · </span>` : ''}${md(t.start)}–${md(t.end)} · ${Math.round(t.progress)}%`;
     return `<div class="tl-row${done ? ' done' : ''}" data-id="${esc(t.id)}" title="${esc(t.name)}">
-      <span class="tl-dot" style="--c:${c}"></span>
+      ${GRIP}<span class="tl-dot" style="--c:${c}"></span>
       <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${meta}</div></div>
     </div>`;
   }).join('');
@@ -637,11 +645,65 @@ function syncListScroll() {
 }
 
 $('#tl-inner').addEventListener('click', (e) => {
+  if (e.target.closest('[data-grip]') || Date.now() - lastRowDrag < 300) return;
   const doneId = e.target.closest('[data-done]')?.dataset.done;
   if (doneId) { if (role !== 'view') { e.preventDefault(); toggleDone(doneId); } else e.preventDefault(); return; }
   const row = e.target.closest('.tl-row');
   if (row) { focusTask(row.dataset.id); openEdit(row.dataset.id); }
 });
+
+/* ---------- 拖拉左側清單的 ⋮⋮ 調整順序 ---------- */
+const GRIP = '<span class="tl-grip edit-only" data-grip title="按住拖拉調整順序">⋮⋮</span>';
+let rowDrag = null, lastRowDrag = 0;
+$('#tl-inner').addEventListener('pointerdown', (e) => {
+  const grip = e.target.closest('[data-grip]');
+  if (!grip || role === 'view' || rowDrag) return;
+  e.preventDefault();
+  const row = grip.closest('.tl-row');
+  const rows = [...$('#tl-inner').querySelectorAll('.tl-row')];
+  const from = rows.indexOf(row);
+  rowDrag = { row, rows, from, to: from, y0: e.clientY, h: row.offsetHeight, pid: e.pointerId, grip };
+  row.classList.add('lifting');
+  try { grip.setPointerCapture(e.pointerId); } catch {}
+});
+$('#tl-inner').addEventListener('pointermove', (e) => {
+  if (!rowDrag || e.pointerId !== rowDrag.pid) return;
+  const { row, rows, from, h } = rowDrag;
+  const lo = -from * h, hi = (rows.length - 1 - from) * h;
+  const dy = Math.max(lo, Math.min(hi, e.clientY - rowDrag.y0));
+  row.style.transform = `translateY(${dy}px)`;
+  const to = from + Math.round(dy / h);
+  if (to === rowDrag.to) return;
+  rowDrag.to = to;
+  rows.forEach((r, i) => {
+    if (r === row) return;
+    const shift = from < to && i > from && i <= to ? -h : from > to && i >= to && i < from ? h : 0;
+    r.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+});
+function endRowDrag(e) {
+  if (!rowDrag || e.pointerId !== rowDrag.pid) return;
+  const { row, rows, from, to } = rowDrag;
+  rowDrag = null;
+  lastRowDrag = Date.now();
+  row.classList.remove('lifting');
+  rows.forEach((r) => { r.style.transform = ''; });
+  if (from !== to) moveTask(shown[from].id, shown[to].id, from < to ? 'after' : 'before');
+}
+$('#tl-inner').addEventListener('pointerup', endRowDrag);
+$('#tl-inner').addEventListener('pointercancel', endRowDrag);
+
+/** 把 id 移到 targetId 的前面／後面，整份順序寫回「排序」欄 */
+function moveTask(id, targetId, where) {
+  const ids = tasks.map((t) => t.id).filter((x) => x !== id);
+  ids.splice(ids.indexOf(targetId) + (where === 'after' ? 1 : 0), 0, id);
+  ids.forEach((x, i) => { tasks.find((t) => t.id === x).order = i + 1; });
+  const left = gantt ? gantt.$container.scrollLeft : null;
+  render(tasks);
+  if (gantt && left !== null) gantt.$container.scrollLeft = left;
+  const t = tasks.find((x) => x.id === id);
+  queueSave('reorder', { ids }, `已調整「${t ? t.name : ''}」的順序`);
+}
 
 /** 捲到該工項的色條並閃一下 */
 function focusTask(id) {
