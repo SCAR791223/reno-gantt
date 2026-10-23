@@ -58,6 +58,9 @@
   #chart-wrap { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
     display: flex; align-items: stretch; }
   #gantt-area { flex: 1; min-width: 0; }
+  /* 甘特圖高度限制在畫面內，往下捲時日期列和左邊「工項」標題固定不動 */
+  #gantt .gantt-container { max-height: max(320px, calc(100vh - var(--chart-top, 150px) - 14px));
+    max-height: max(320px, calc(100dvh - var(--chart-top, 150px) - 14px)); }
 
   /* ── 左側工項清單 ── */
   #tlist { flex: none; width: var(--tl-w, 260px); border-right: 1px solid var(--line); display: flex; flex-direction: column;
@@ -563,6 +566,7 @@ function render(list) {
   };
   routeArrows();
   TL.fixToday(gantt);
+  fitChart();
   // 甘特圖上下捲動時，左側清單跟著捲
   gantt.$container.addEventListener('scroll', syncListScroll, { passive: true });
   drawDiamonds();
@@ -573,6 +577,22 @@ function render(list) {
   renderList();
   markView();
 }
+
+/* ---------- 甘特圖塞進畫面高度：圖表自己上下捲，日期列和左邊標題就不會捲走 ---------- */
+function fitChart() {
+  const top = $('#chart-wrap').getBoundingClientRect().top + window.scrollY;
+  document.documentElement.style.setProperty('--chart-top', Math.round(top) + 'px');
+  syncListScroll();
+}
+window.addEventListener('resize', () => { if (gantt) fitChart(); });
+// 在左邊清單上滾滑鼠滾輪，也讓甘特圖跟著上下捲
+$('#tlist').addEventListener('wheel', (e) => {
+  if (!gantt || !e.deltaY) return;
+  const c = gantt.$container;
+  if (c.scrollHeight <= c.clientHeight) return;
+  e.preventDefault();
+  c.scrollTop += e.deltaY;
+}, { passive: false });
 
 /* ---------- 箭頭路線：從前一個工程的「尾巴」出發，在自己那一列往右走，
    到下一個工程開工前才轉下去，避免看起來像是從中間別的工項接過去 ---------- */
