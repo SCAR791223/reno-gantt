@@ -136,6 +136,7 @@
   .gantt .bar-wrapper.c7 .bar { fill: #d9d4cc; } .gantt .bar-wrapper.c7 .bar-progress { fill: #7a736a; }
   .gantt .bar-wrapper.done .bar { fill: #e4e1dc; } .gantt .bar-wrapper.done .bar-progress { fill: #b9b3aa; }
   .gantt .bar-label { fill: #2b2a28; font-weight: 500; }
+  .gantt .tick.thick { stroke: #d6cfc4; stroke-width: 1.4; }
   .gantt .bar-label.big { fill: var(--ink); paint-order: stroke; stroke: var(--card); stroke-width: 4px; stroke-linejoin: round; }
 
   /* ── 編輯視窗 ── */
@@ -499,11 +500,12 @@ function render(list) {
   const notesBefore = {};
   shown.filter(isMs).forEach((n) => n.dependencies.split(',').filter(Boolean)
     .forEach((tid) => { (notesBefore[tid] = notesBefore[tid] || []).push(n.id); }));
+  TL = buildTimeline(viewMode === 'Day');
   const gTasks = shown.map((t) => ({
     id: t.id,
     name: t.name,
-    start: t.start,
-    end: isMs(t) ? t.start : t.end,
+    start: isMs(t) ? TL.endIn(t.start) : TL.startIn(t.start),
+    end: isMs(t) ? TL.endIn(t.start) : TL.endIn(t.end, t.start),
     progress: isMs(t) ? 0 : t.progress,
     // 篩選後被藏起來的項目不畫箭頭
     dependencies: isMs(t) ? '' : [
@@ -518,9 +520,12 @@ function render(list) {
   $('#gantt').innerHTML = '';
   gantt = new Gantt('#gantt', gTasks, {
     language: 'zh-TW',
+    view_modes: [TL.viewMode(viewMode)],
     view_mode: viewMode,
+    infinite_padding: false,   // Frappe 的無限延伸在「週」檢視會錯位，改成固定範圍
+    ...(TL.compress ? { holidays: {} } : {}),   // 壓縮後週末已經不在圖上，不用再上色
     today_button: false,
-    scroll_to: ymd(addDays(new Date(), -3)),
+    scroll_to: TL.scrollTarget(),
     // 至少留 360px 高，點色條跳出的小視窗才不會被切掉
     container_height: Math.max(360, shown.length * 44 + 110),
     move_dependencies: true,
@@ -532,7 +537,8 @@ function render(list) {
     popup: (ctx) => { openEdit(ctx.task.id); return false; },
     on_date_change: (task, start, end) => {
       const t = tasks.find((x) => x.id === task.id);
-      const fields = t && isMs(t) ? { start: ymd(start), end: ymd(start) } : { start: ymd(start), end: ymd(end) };
+      const s0 = TL.out(start), e0 = TL.out(end);
+      const fields = t && isMs(t) ? { start: s0, end: s0 } : { start: s0, end: e0 < s0 ? s0 : e0 };
       if (t) Object.assign(t, fields);
       renderList(); drawDiamonds();   // 日期變了，「晚於開工」的提醒跟著更新
       // 拖拉過程可能觸發多次，等手放開 0.4 秒後只存最後一次
@@ -556,6 +562,7 @@ function render(list) {
     return allDeps(id).filter((d) => !isMs(tasks.find((x) => x.id === d) || {}));
   };
   routeArrows();
+  TL.fixToday(gantt);
   // 甘特圖上下捲動時，左側清單跟著捲
   gantt.$container.addEventListener('scroll', syncListScroll, { passive: true });
   drawDiamonds();
@@ -599,8 +606,17 @@ function smartPath(arrow) {
   const sy = fb.getY() + fb.getHeight() / 2;
   const tx = tb.getX(), ty = tb.getY() + tb.getHeight() / 2;
   const r = 5, vx = tx - 12;
-  if (vx - r < sx + 4 || Math.abs(ty - sy) < 2 * r) return null;   // 太擠：用原本的畫法
+  if (Math.abs(ty - sy) < 2 * r) return null;
   const down = ty > sy;
+  if (vx - r < sx + 4) {
+    // 兩個工程緊接著：從前一個色條的右下角直接拉下去（不從中間出發，免得像是從別的工項接過去）
+    const x = Math.min(fb.getX() + fb.getWidth(), tx) - 8;
+    if (x < fb.getX() + 4) return null;
+    const y0 = down ? fb.getY() + fb.getHeight() : fb.getY();
+    return down
+      ? `M ${x} ${y0} V ${ty - r} a ${r} ${r} 0 0 0 ${r} ${r} L ${tx - 2} ${ty} m -5 -5 l 5 5 l -5 5`
+      : `M ${x} ${y0} V ${ty + r} a ${r} ${r} 0 0 1 ${r} ${-r} L ${tx - 2} ${ty} m -5 -5 l 5 5 l -5 5`;
+  }
   return down
     ? `M ${sx} ${sy} H ${vx - r} a ${r} ${r} 0 0 1 ${r} ${r} V ${ty - r} a ${r} ${r} 0 0 0 ${r} ${r} L ${tx - 2} ${ty} m -5 -5 l 5 5 l -5 5`
     : `M ${sx} ${sy} H ${vx - r} a ${r} ${r} 0 0 0 ${r} ${-r} V ${ty + r} a ${r} ${r} 0 0 1 ${r} ${-r} L ${tx - 2} ${ty} m -5 -5 l 5 5 l -5 5`;
@@ -839,14 +855,14 @@ document.querySelectorAll('#views button').forEach((b) => {
   b.onclick = () => {
     viewMode = b.dataset.v;
     store.set(VIEW_KEY, viewMode);
-    if (gantt) gantt.change_view_mode(viewMode);
+    if (gantt) render(tasks);   // 日檢視會藏假日，切換時整張重畫
     markView();
   };
 });
 function markView() {
   document.querySelectorAll('#views button').forEach((b) => b.classList.toggle('on', b.dataset.v === viewMode));
 }
-$('#btn-today').onclick = () => gantt && gantt.scroll_current();
+$('#btn-today').onclick = () => gantt && TL && gantt.set_scroll_position(TL.scrollTarget());
 $('#btn-reload').onclick = () => { reload(); toast('已重新載入'); };
 
 // 切回這個分頁時自動抓最新資料（看到對方剛改的內容）
@@ -1000,6 +1016,69 @@ $('#btn-del').onclick = async () => {
     if (err.message !== 'AUTH') toast('刪除失敗：' + err.message, true);
   }
 };
+
+/* ---------- 時間軸：「日」檢視把週六、週日和國定假日藏起來（不能施工） ----------
+   做法：把每個上班日依序對應到一個連續的「圖上日期」交給甘特圖，標題再換回真正的日期。
+   拖拉後再換回真正的日期存檔，所以工期是用「工作天」在算。週、月檢視照一般日曆。 */
+const HOLIDAYS = new Set(['2026-10-26', '2026-12-25', '2027-01-01']);   // 光復節補假、行憲紀念日、元旦
+const isOffDay = (s) => { const w = new Date(s + 'T00:00:00').getDay(); return w === 0 || w === 6 || HOLIDAYS.has(s); };
+let TL = null;
+function buildTimeline(compress) {
+  const taskDates = tasks.flatMap((t) => [t.start, t.end]).filter(Boolean).sort();
+  const all = taskDates.concat(todayStr()).sort();
+  const lo = addDays(new Date(all[0] + 'T00:00:00'), -45), hi = addDays(new Date(all[all.length - 1] + 'T00:00:00'), 120);
+  const idt = (s) => s;
+  if (!compress) {
+    // 週檢視從星期一開始算一週
+    const w0 = taskDates.length ? new Date(taskDates[0] + 'T00:00:00').getDay() : 1;
+    const vm = (name) => ({ Week: { ...Gantt.VIEW_MODE.WEEK, padding: [`${28 + ((w0 + 6) % 7)}d`, '2m'] }, Month: { ...Gantt.VIEW_MODE.MONTH, padding: ['2m', '3m'] } }[name]
+      || { ...Gantt.VIEW_MODE.DAY, padding: ['14d', '30d'] });
+    return { compress: false, startIn: idt, endIn: (e, s) => (s && e < s ? s : e), out: ymd, viewMode: vm,
+      scrollTarget: () => ymd(addDays(new Date(), viewMode === 'Day' ? -3 : -10)), fixToday() {} };
+  }
+  const work = [];                       // 第 i 個上班日的真正日期
+  const nextIdx = new Map(), prevIdx = new Map();
+  for (let d = new Date(lo); d <= hi; d = addDays(d, 1)) {
+    const s = ymd(d);
+    if (!isOffDay(s)) work.push(s);
+    nextIdx.set(s, isOffDay(s) ? work.length : work.length - 1);
+    prevIdx.set(s, work.length - 1);
+  }
+  const base = new Date(lo);
+  const fake = (i) => ymd(addDays(base, Math.max(0, Math.min(work.length - 1, i))));
+  const idxOfFake = (d) => diffDays(ymd(base), ymd(d));
+  const real = (d) => work[Math.max(0, Math.min(work.length - 1, idxOfFake(d)))];
+  const gapBefore = (r) => { const p = ymd(addDays(new Date(r + 'T00:00:00'), -1)); return isOffDay(p); };
+  const todayIdx = nextIdx.get(todayStr());
+  return {
+    compress: true,
+    startIn: (s) => fake(nextIdx.get(s) ?? 0),
+    endIn: (e, s) => { let i = prevIdx.get(e) ?? 0; const j = s ? (nextIdx.get(s) ?? 0) : i; return fake(Math.max(i, j)); },
+    out: (d) => real(d),
+    viewMode: () => ({
+      ...Gantt.VIEW_MODE.DAY,
+      // 前面至少留到今天再往前幾天，今天的線才看得到
+      padding: [Math.max(10, (taskDates.length ? nextIdx.get(taskDates[0]) - todayIdx : 0) + 8) + 'd', '30d'],
+      lower_text: (d) => String(+real(d).slice(8)),
+      upper_text: (d, ld) => (!ld || real(d).slice(0, 7) !== real(ld).slice(0, 7) ? `${+real(d).slice(5, 7)}月` : ''),
+      thick_line: (d) => gapBefore(real(d)),     // 中間有藏起來的假日，畫粗線隔開
+    }),
+    scrollTarget: () => fake(todayIdx - 3),
+    // 甘特圖自己用「現在」標今天，在壓縮後的時間軸上會標錯位置，這裡改回正確的那一格
+    fixToday(g) {
+      g.$container.querySelectorAll('.current-date-highlight').forEach((el) => el.classList.remove('current-date-highlight'));
+      g.$current_highlight?.remove?.(); g.$current_ball_highlight?.remove?.();
+      const di = g.dates.findIndex((d) => ymd(d) === fake(todayIdx));
+      if (di < 0) return;
+      const left = di * g.config.column_width + (isOffDay(todayStr()) ? 0 : g.config.column_width / 2);
+      const labels = g.$container.querySelectorAll('.lower-text');
+      if (!isOffDay(todayStr()) && labels[di]) labels[di].classList.add('current-date-highlight');
+      const mk = (cls, style, parent) => { const el = document.createElement('div'); el.className = cls; Object.assign(el.style, style); parent.appendChild(el); return el; };
+      g.$current_highlight = mk('current-highlight', { top: g.config.header_height + 'px', left: left + 'px', height: (g.grid_height - g.config.header_height) + 'px' }, g.$container);
+      g.$current_ball_highlight = mk('current-ball-highlight', { top: (g.config.header_height - 6) + 'px', left: (left - 2.5) + 'px', width: '6px', height: '6px' }, g.$header);
+    },
+  };
+}
 
 /* ---------- 小工具 ---------- */
 function ymd(d) {
