@@ -7,7 +7,16 @@
  * 密碼「不寫在程式碼裡」：請到 Apps Script 左側「專案設定 ⚙️」→「指令碼屬性」新增：
  *   PASSWORD   可以看也可以改（你和老婆用）
  * 瀏覽連結的鑰匙 VIEW_KEY 不用自己設：在網頁按「分享瀏覽連結」時自動產生。
+ *
+ * LINE 群組通知（選用）：
+ *   LINE_TOKEN  LINE Messaging API 的 Channel access token（自己貼上）
+ *   LINE_GROUP  要通知的群組，在網頁按「🔔 LINE 通知 → 開始連結」後把機器人加進群組就會自動記下
+ *   每天早上 8 點由 setupNotify() 建立的排程檢查一次，有事才發。
  */
+
+// 提前幾天提醒
+const NOTIFY_MS_DAYS = [7, 3];     // 注意事項：截止前 7 天、3 天
+const NOTIFY_TASK_DAYS = [3];      // 工程：開工前 3 天
 
 const SHEET_NAME = '時程';
 const HEADERS = ['id', '工項', '開始', '結束', '進度', '相依', '工班', '備註', '類型', '排序'];
@@ -63,7 +72,7 @@ function doGet() {
 
 /**
  * 所有請求都用 POST，body 是 JSON 文字：
- *   { password?, key?, action: 'list' | 'update' | 'add' | 'delete' | 'reorder' | 'shareKey', ... }
+ *   { password?, key?, action: 'list' | 'update' | 'add' | 'delete' | 'reorder' | 'shareKey' | 'line…', ... }
  * password = 修改密碼；key = 分享連結裡的瀏覽鑰匙（只能 list）。
  */
 function doPost(e) {
@@ -72,6 +81,12 @@ function doPost(e) {
     req = JSON.parse(e.postData.contents);
   } catch (err) {
     return json_({ ok: false, error: '格式錯誤' });
+  }
+
+  // LINE 傳來的 webhook（機器人被加進群組、群組裡有人傳訊息）
+  if (req && Array.isArray(req.events)) {
+    try { handleLine_(req.events); } catch (err) { console.error(err); }
+    return json_({ ok: true });
   }
 
   const role = roleOf_(req.password, req.key);
@@ -86,11 +101,17 @@ function doPost(e) {
   try {
     switch (req.action) {
       case 'list':   return json_({ ok: true, role, tasks: listTasks_() });
-      case 'shareKey': return json_({ ok: true, key: shareKey_(!!req.renew) });
+      case 'shareKey':
+        if (req.site) PropertiesService.getScriptProperties().setProperty('SITE_URL', String(req.site).slice(0, 200));
+        return json_({ ok: true, key: shareKey_(!!req.renew) });
       case 'update': return json_({ ok: true, task: withLock_(() => updateTask_(req.id, req.fields)) });
       case 'add':    return json_({ ok: true, task: withLock_(() => addTask_(req.fields)) });
       case 'delete': return json_({ ok: true, id: withLock_(() => deleteTask_(req.id)) });
       case 'reorder': return json_({ ok: true, n: withLock_(() => reorder_(req.ids)) });
+      case 'lineStatus': return json_({ ok: true, line: lineStatus_() });
+      case 'lineBind':   return json_({ ok: true, line: lineBind_() });
+      case 'lineUnbind': return json_({ ok: true, line: lineUnbind_() });
+      case 'lineTest':   return json_({ ok: true, sent: lineTest_() });
       default:       return json_({ ok: false, error: '未知的動作' });
     }
   } catch (err) {
@@ -211,6 +232,120 @@ function reorder_(ids) {
   rng.setValues(out);
   return ids.length;
 }
+
+/* ───────────────────────── LINE 群組通知 ───────────────────────── */
+
+/** 第一次使用：在編輯器選 setupNotify 按「執行」，授權後每天早上 8 點自動檢查 */
+function setupNotify() {
+  ScriptApp.getProjectTriggers()
+    .filter((t) => t.getHandlerFunction() === 'dailyNotify')
+    .forEach((t) => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('dailyNotify').timeBased().atHour(8).everyDays(1)
+    .inTimezone(SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone()).create();
+  UrlFetchApp.fetch('https://api.line.me/v2/bot/info', { muteHttpExceptions: true }); // 順便取得連網授權
+  Logger.log('✅ 已設定：每天早上 8 點檢查要不要發 LINE 通知');
+}
+
+/** 排程每天呼叫：有要提醒的事才發到群組 */
+function dailyNotify() {
+  const p = PropertiesService.getScriptProperties();
+  if (!p.getProperty('LINE_TOKEN') || !p.getProperty('LINE_GROUP')) return;
+  const text = buildDigest_(false);
+  if (text) linePush_(p.getProperty('LINE_GROUP'), text);
+}
+
+/** 組出今天的提醒內容；force=true 時沒有事也回一段話（測試用） */
+function buildDigest_(force) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const today = fmtDate_(new Date(), ss);
+  const tasks = listTasks_();
+  const ms = [], works = [];
+  tasks.forEach((t) => {
+    const d = daysBetween_(today, t.start);
+    if (t.type === 'milestone') {
+      if (t.progress < 100 && NOTIFY_MS_DAYS.indexOf(d) >= 0) ms.push({ t, d });
+    } else if (t.progress < 100 && NOTIFY_TASK_DAYS.indexOf(d) >= 0) works.push({ t, d });
+  });
+  if (!ms.length && !works.length && !force) return '';
+  const line = ({ t, d }, tail) => `・${d} 天後 ${md_(t.start)}（${wd_(t.start)}）${t.name}${tail}${t.crew ? `（${t.crew}）` : ''}`;
+  const out = [`🏠 裝潢提醒 ${md_(today)}（${wd_(today)}）`];
+  if (ms.length) out.push('', '◆ 注意事項快到期', ...ms.sort((a, b) => a.d - b.d).map((x) => line(x, ' 截止')));
+  if (works.length) out.push('', '● 工程快開工', ...works.sort((a, b) => a.d - b.d).map((x) => line(x, ' 開工')));
+  if (!ms.length && !works.length) {
+    const next = tasks.filter((t) => t.start >= today && t.progress < 100).sort((a, b) => a.start.localeCompare(b.start))[0];
+    out.push('', '這幾天沒有需要提醒的事。', next ? `下一件：${md_(next.start)}（${wd_(next.start)}）${next.name}` : '');
+  }
+  const key = PropertiesService.getScriptProperties().getProperty('VIEW_KEY');
+  const site = PropertiesService.getScriptProperties().getProperty('SITE_URL') || 'https://scar791223.github.io/reno-gantt/';
+  if (key && site) out.push('', `📅 完整時程：${site}#v=${key}`);
+  return out.join('\n').trim();
+}
+
+function handleLine_(events) {
+  const p = PropertiesService.getScriptProperties();
+  const bound = p.getProperty('LINE_GROUP');
+  const until = Number(p.getProperty('LINE_BIND_UNTIL') || 0);
+  events.forEach((ev) => {
+    const src = ev.source || {};
+    const gid = src.groupId || src.roomId;
+    if (!gid) return;
+    const text = ev.type === 'message' && ev.message && ev.message.type === 'text' ? String(ev.message.text).trim() : '';
+    // 只有在網頁按了「開始連結」後 10 分鐘內，才接受新的群組（避免別人亂綁）
+    if (Date.now() < until && (ev.type === 'join' || /綁定|連結/.test(text))) {
+      p.setProperty('LINE_GROUP', gid);
+      p.deleteProperty('LINE_BIND_UNTIL');
+      lineReply_(ev.replyToken, '✅ 已連結裝潢時程通知\n注意事項截止前 7 天、3 天，工程開工前 3 天，早上 8 點會在這裡提醒。\n想看今天的提醒，傳「提醒」就好。');
+      return;
+    }
+    if (gid === bound && /^(提醒|通知|時程)$/.test(text)) {
+      lineReply_(ev.replyToken, buildDigest_(true));
+    }
+  });
+}
+
+function lineStatus_() {
+  const p = PropertiesService.getScriptProperties();
+  const until = Number(p.getProperty('LINE_BIND_UNTIL') || 0);
+  return {
+    hasToken: !!p.getProperty('LINE_TOKEN'),
+    bound: !!p.getProperty('LINE_GROUP'),
+    binding: Date.now() < until,
+    hasTrigger: ScriptApp.getProjectTriggers().some((t) => t.getHandlerFunction() === 'dailyNotify'),
+  };
+}
+function lineBind_() {
+  PropertiesService.getScriptProperties().setProperty('LINE_BIND_UNTIL', String(Date.now() + 10 * 60 * 1000));
+  return lineStatus_();
+}
+function lineUnbind_() {
+  const p = PropertiesService.getScriptProperties();
+  p.deleteProperty('LINE_GROUP'); p.deleteProperty('LINE_BIND_UNTIL');
+  return lineStatus_();
+}
+function lineTest_() {
+  const g = PropertiesService.getScriptProperties().getProperty('LINE_GROUP');
+  if (!g) throw new Error('還沒連結 LINE 群組');
+  linePush_(g, buildDigest_(true));
+  return true;
+}
+
+function linePush_(to, text) { lineCall_('push', { to, messages: [{ type: 'text', text: text.slice(0, 4900) }] }); }
+function lineReply_(token, text) { if (token) lineCall_('reply', { replyToken: token, messages: [{ type: 'text', text: text.slice(0, 4900) }] }); }
+function lineCall_(kind, body) {
+  const token = PropertiesService.getScriptProperties().getProperty('LINE_TOKEN');
+  if (!token) throw new Error('還沒設定 LINE_TOKEN');
+  const res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/' + kind, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token }, payload: JSON.stringify(body),
+  });
+  if (res.getResponseCode() >= 300) throw new Error('LINE 回應 ' + res.getResponseCode() + '：' + res.getContentText().slice(0, 200));
+}
+
+const WD_ = ['日', '一', '二', '三', '四', '五', '六'];
+function noon_(s) { return new Date(s + 'T12:00:00Z'); }
+function daysBetween_(a, b) { return Math.round((noon_(b) - noon_(a)) / 86400000); }
+function md_(s) { return Number(s.slice(5, 7)) + '/' + Number(s.slice(8, 10)); }
+function wd_(s) { return WD_[noon_(s).getUTCDay()]; }
 
 /* ───────────────────────── 工具函式 ───────────────────────── */
 

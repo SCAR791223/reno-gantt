@@ -97,6 +97,10 @@
   #login .back { display: block; text-align: center; margin-top: 12px; font-size: 14px; color: var(--muted); }
   #share-dlg form { padding: 20px; display: grid; gap: 12px; }
   #share-dlg p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+  #line-dlg form { padding: 20px; display: grid; gap: 12px; }
+  #line-dlg p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+  .line-status { font-size: 14px; line-height: 1.7; background: #faf8f5; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .line-status .ok { color: #2f7d4f; font-weight: 600; } .line-status .no { color: var(--danger); font-weight: 600; }
   #share-link { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
   .ro-badge { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: #eef3f8; color: #3c5a7a; border: 1px solid #d5e1ec; }
   header select.who { width: auto; padding: 7px 10px; background: var(--card); }
@@ -262,6 +266,7 @@
     <button class="btn primary edit-only hdr-extra" id="btn-add">＋ 工項</button>
     <button class="btn btn-ms edit-only hdr-extra" id="btn-add-ms">＋ 注意事項</button>
     <button class="btn edit-only hdr-extra" id="btn-share" title="產生給設計師的瀏覽連結">🔗 分享瀏覽連結</button>
+    <button class="btn edit-only hdr-extra" id="btn-line" title="LINE 群組通知">🔔 通知</button>
     <button class="btn edit-only hdr-extra" id="btn-logout" title="登出">登出</button>
     <button class="btn primary view-only hdr-extra" id="btn-login">🔒 登入修改</button>
   </header>
@@ -270,6 +275,7 @@
     <button data-proxy="#btn-reload">⟳ 重新整理</button>
     <button data-proxy="#btn-list" class="gantt-only">☰ 顯示／隱藏清單</button>
     <button data-proxy="#btn-share" class="edit-only">🔗 分享瀏覽連結</button>
+    <button data-proxy="#btn-line" class="edit-only">🔔 LINE 通知</button>
     <button data-proxy="#btn-logout" class="edit-only">登出</button>
     <button data-proxy="#btn-login" class="view-only">🔒 登入修改</button>
   </div>
@@ -338,6 +344,21 @@
       <span class="spacer"></span>
       <button class="btn" type="submit">關閉</button>
       <button class="btn primary" type="button" id="btn-copy">複製連結</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="line-dlg">
+  <form method="dialog">
+    <h2 style="margin:0;font-size:18px">🔔 LINE 群組通知</h2>
+    <p>注意事項截止前 <b>7 天、3 天</b>，工程開工前 <b>3 天</b>，早上 8 點發到你們的 LINE 群組。在群組裡傳「提醒」也會馬上回覆。</p>
+    <div id="line-status" class="line-status">讀取中…</div>
+    <div class="actions">
+      <button class="btn danger hidden" type="button" id="btn-line-unbind">取消連結</button>
+      <span class="spacer"></span>
+      <button class="btn" type="submit">關閉</button>
+      <button class="btn hidden" type="button" id="btn-line-test">傳送測試</button>
+      <button class="btn primary" type="button" id="btn-line-bind">開始連結</button>
     </div>
   </form>
 </dialog>
@@ -480,7 +501,7 @@ $('#btn-logout').onclick = () => logout();
 const shareUrl = (k) => location.origin + location.pathname + '#v=' + k;
 async function openShare(renew = false) {
   try {
-    const { key } = await api('shareKey', { renew });
+    const { key } = await api('shareKey', { renew, site: location.origin + location.pathname });
     viewKey = key; store.set(VKEY_KEY, key);   // 自己也存一份，登出後還能瀏覽
     $('#share-link').value = shareUrl(key);
     if (!$('#share-dlg').open) $('#share-dlg').showModal();
@@ -504,6 +525,33 @@ $('#btn-copy').onclick = async () => {
   try { await navigator.clipboard.writeText(text); toast('已複製，貼給設計師就可以了'); }
   catch { $('#share-link').select(); toast('請長按或 Ctrl+C 複製'); }
 };
+
+/* ---------- LINE 群組通知 ---------- */
+let lineTimer = null;
+function showLine(st) {
+  const box = $('#line-status');
+  const row = (ok, yes, no) => `<div>${ok ? '<span class="ok">✓</span> ' + yes : '<span class="no">✗</span> ' + no}</div>`;
+  box.innerHTML =
+    row(st.hasToken, 'LINE 機器人已設定', '還沒設定 LINE_TOKEN（Apps Script 指令碼屬性）') +
+    row(st.hasTrigger, '每天 8 點自動檢查', '還沒啟用排程（Apps Script 執行一次 setupNotify）') +
+    (st.binding ? '<div>⏳ <b>等待連結中</b>：10 分鐘內把機器人加進群組，或在群組裡傳「綁定」</div>'
+      : row(st.bound, '已連結 LINE 群組', '還沒連結群組'));
+  $('#btn-line-test').classList.toggle('hidden', !st.bound);
+  $('#btn-line-unbind').classList.toggle('hidden', !st.bound);
+  $('#btn-line-bind').textContent = st.bound ? '換一個群組' : '開始連結';
+  $('#btn-line-bind').disabled = !st.hasToken;
+  clearTimeout(lineTimer);
+  if (st.binding && $('#line-dlg').open) lineTimer = setTimeout(() => lineCall('lineStatus'), 4000);   // 等待中就自動更新
+}
+async function lineCall(action, okMsg) {
+  try { const d = await api(action); if (d.line) showLine(d.line); if (okMsg) toast(okMsg); }
+  catch (e) { toast(e.message, true); }
+}
+$('#btn-line').onclick = () => { $('#line-status').textContent = '讀取中…'; $('#line-dlg').showModal(); lineCall('lineStatus'); };
+$('#btn-line-bind').onclick = () => lineCall('lineBind', '請在 10 分鐘內把機器人加進群組');
+$('#btn-line-test').onclick = () => lineCall('lineTest', '已傳送測試通知，去群組看看');
+$('#btn-line-unbind').onclick = () => lineCall('lineUnbind', '已取消連結');
+$('#line-dlg').addEventListener('close', () => clearTimeout(lineTimer));
 
 /* ---------- 畫面 ---------- */
 function showApp(list) {
