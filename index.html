@@ -136,7 +136,7 @@
   .gantt .bar-wrapper.c7 .bar { fill: #d9d4cc; } .gantt .bar-wrapper.c7 .bar-progress { fill: #7a736a; }
   .gantt .bar-wrapper.done .bar { fill: #e4e1dc; } .gantt .bar-wrapper.done .bar-progress { fill: #b9b3aa; }
   .gantt .bar-label { fill: #2b2a28; font-weight: 500; }
-  .gantt .bar-label.big { fill: var(--ink); }
+  .gantt .bar-label.big { fill: var(--ink); paint-order: stroke; stroke: var(--card); stroke-width: 4px; stroke-linejoin: round; }
 
   /* ── 編輯視窗 ── */
   dialog { border: 0; border-radius: 14px; padding: 0; width: min(460px, calc(100vw - 32px)); box-shadow: 0 10px 40px rgba(0,0,0,.2); }
@@ -555,15 +555,55 @@ function render(list) {
     if (isMs(tasks.find((x) => x.id === id) || {})) return [];
     return allDeps(id).filter((d) => !isMs(tasks.find((x) => x.id === d) || {}));
   };
+  routeArrows();
   // 甘特圖上下捲動時，左側清單跟著捲
   gantt.$container.addEventListener('scroll', syncListScroll, { passive: true });
   drawDiamonds();
   // 拖拉或切換檢視時色條位置會變，菱形跟著重畫
   if (diamondObserver) diamondObserver.disconnect();
-  diamondObserver = new MutationObserver(() => requestAnimationFrame(drawDiamonds));
+  diamondObserver = new MutationObserver(() => requestAnimationFrame(() => { drawDiamonds(); refreshArrows(); }));
   diamondObserver.observe(gantt.$svg, { subtree: true, attributes: true, attributeFilter: ['x', 'width'], childList: true });
   renderList();
   markView();
+}
+
+/* ---------- 箭頭路線：從前一個工程的「尾巴」出發，在自己那一列往右走，
+   到下一個工程開工前才轉下去，避免看起來像是從中間別的工項接過去 ---------- */
+let arrowPatched = false;
+function routeArrows() {
+  if (!gantt || !gantt.arrows || !gantt.arrows.length) return;
+  if (!arrowPatched) {
+    const proto = Object.getPrototypeOf(gantt.arrows[0]);
+    const original = proto.calculate_path;
+    proto.calculate_path = function () {
+      original.call(this);
+      try { const p = smartPath(this); if (p) this.path = p; } catch (e) { /* 算不出來就用原本的畫法 */ }
+    };
+    arrowPatched = true;
+  }
+  refreshArrows();
+  requestAnimationFrame(refreshArrows);   // 標籤位置要等下一格才算好
+}
+function refreshArrows() {
+  if (!gantt || !arrowPatched) return;
+  (gantt.arrows || []).forEach((a) => { const d = a.path; a.calculate_path(); if (a.path !== d) a.element.setAttribute('d', a.path); });
+}
+function smartPath(arrow) {
+  const from = arrow.from_task, to = arrow.to_task;
+  const ft = tasks.find((x) => x.id === from.task.id);
+  if (!ft || isMs(ft)) return null;                  // 注意事項維持從菱形往下拉
+  const fb = from.$bar, tb = to.$bar;
+  let sx = fb.getX() + fb.getWidth();
+  const label = from.group.querySelector('.bar-label.big');
+  if (label) { try { const b = label.getBBox(); sx = Math.max(sx, b.x + b.width + 4); } catch (e) {} }
+  const sy = fb.getY() + fb.getHeight() / 2;
+  const tx = tb.getX(), ty = tb.getY() + tb.getHeight() / 2;
+  const r = 5, vx = tx - 12;
+  if (vx - r < sx + 4 || Math.abs(ty - sy) < 2 * r) return null;   // 太擠：用原本的畫法
+  const down = ty > sy;
+  return down
+    ? `M ${sx} ${sy} H ${vx - r} a ${r} ${r} 0 0 1 ${r} ${r} V ${ty - r} a ${r} ${r} 0 0 0 ${r} ${r} L ${tx - 2} ${ty} m -5 -5 l 5 5 l -5 5`
+    : `M ${sx} ${sy} H ${vx - r} a ${r} ${r} 0 0 0 ${r} ${-r} V ${ty + r} a ${r} ${r} 0 0 1 ${r} ${-r} L ${tx - 2} ${ty} m -5 -5 l 5 5 l -5 5`;
 }
 
 /* ---------- 注意事項：在色條位置畫菱形 ---------- */
