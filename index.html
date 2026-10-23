@@ -19,6 +19,8 @@
     --radius: 10px;
   }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { touch-action: manipulation; }
   html, body { margin: 0; background: var(--bg); color: var(--ink);
     font-family: -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
   button, input, select, textarea { font: inherit; color: inherit; }
@@ -60,7 +62,7 @@
   #gantt-area { flex: 1; min-width: 0; }
   /* 甘特圖高度限制在畫面內，往下捲時日期列和左邊「工項」標題固定不動 */
   #gantt .gantt-container { max-height: max(320px, calc(100vh - var(--chart-top, 150px) - 14px));
-    max-height: max(320px, calc(100dvh - var(--chart-top, 150px) - 14px)); }
+    max-height: max(320px, calc(100svh - var(--chart-top, 150px) - 14px)); overscroll-behavior: contain; }
 
   /* ── 左側工項清單 ── */
   #tlist { flex: none; width: var(--tl-w, 260px); border-right: 1px solid var(--line); display: flex; flex-direction: column;
@@ -168,10 +170,11 @@
 
   /* ── 行程檢視（手機好讀）── */
   #agenda { max-width: 760px; }
-  .ag-week { margin: 0 0 14px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .ag-week { margin: 0 0 14px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); }
   .ag-week.past { opacity: .55; }
   .ag-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #faf8f5; border-bottom: 1px solid var(--line);
-    font-size: 14px; font-weight: 600; position: sticky; top: var(--hdr-h, 0px); z-index: 2; }
+    font-size: 14px; font-weight: 600; position: sticky; top: var(--hdr-h, 0px); z-index: 2; border-radius: var(--radius) var(--radius) 0 0; }
+  .ag-week .ag-row:last-child { border-radius: 0 0 var(--radius) var(--radius); }
   .ag-head .ag-tag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #fff; }
   .ag-head .ag-tag.next { background: #eef3f8; color: #3c5a7a; }
   .ag-head .ag-sub { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); }
@@ -214,7 +217,9 @@
       width: 56px; height: 56px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 30px; line-height: 1;
       box-shadow: 0 6px 18px rgba(192,102,58,.45); cursor: pointer; }
     #fab-menu.open { display: grid; position: fixed; right: 18px; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
-    main { padding: 12px 10px 90px; }
+    main { padding: 12px 10px; }
+    body.mode-list main { padding-bottom: 90px; }
+    .hint { display: none; }
     .legend { gap: 8px 10px; font-size: 12px; }
     body.mode-list .legend { display: none; }
     .ag-row { padding: 12px; }
@@ -676,6 +681,7 @@ function renderAgenda() {
       ${list.map((i) => agendaRow(i, w)).join('')}</section>`;
   }
   box.innerHTML = html;
+  setHdrH();
   if (!agendaScrolled) { agendaScrolled = true; requestAnimationFrame(() => scrollAgendaToNow(false)); }
 }
 function agendaRow({ t, s, e }, w) {
@@ -712,7 +718,7 @@ $('#agenda').addEventListener('click', (e) => {
   if (row) openEdit(row.dataset.id);
 });
 // 行程檢視的週標題要貼在上方選單下面
-const setHdrH = () => document.documentElement.style.setProperty('--hdr-h', document.querySelector('header').offsetHeight + 'px');
+function setHdrH() { document.documentElement.style.setProperty('--hdr-h', document.querySelector('header').offsetHeight + 'px'); }
 window.addEventListener('resize', setHdrH); setTimeout(setHdrH, 0);
 
 /* ---------- 手機的「⋯」選單和右下角＋ ---------- */
