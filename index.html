@@ -429,6 +429,16 @@ async function reload() {
 }
 
 const isMs = (t) => t.type === 'milestone';
+// 注意事項依「誰要做」上色：屋主、設計師固定顏色，工班用工班色；逾期一律紅、完成一律灰
+const OWNER_COLORS = { '屋主': '#e8590c', '設計師': '#7048e8' };
+function msColor(t) {
+  const st = msState(t);
+  if (st === 'done') return 'var(--ms-done)';
+  if (st === 'late') return 'var(--ms-late)';
+  if (OWNER_COLORS[t.crew]) return OWNER_COLORS[t.crew];
+  if (t.crew && tasks.some((x) => !isMs(x) && x.crew === t.crew)) return SWATCH[colorFor(t.crew)];
+  return 'var(--ms)';
+}
 const todayStr = () => ymd(new Date());
 /** 注意事項狀態：done / late / open */
 function msState(t) {
@@ -451,6 +461,7 @@ function colorFor(crew) {
 }
 
 function render(list) {
+  list.forEach((t) => { if (t.crew === '我們（屋主）') t.crew = '屋主'; });
   tasks = list.slice().sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id, undefined, { numeric: true }));
   renderWho();
   shown = who ? tasks.filter((t) => t.crew === who) : tasks;
@@ -537,6 +548,8 @@ function drawDiamonds() {
       bar.after(d);
     }
     if (d.getAttribute('points') !== pts) d.setAttribute('points', pts);
+    const t = tasks.find((x) => x.id === w.getAttribute('data-id'));
+    if (t) { const c = msColor(t); if (d.style.fill !== c) d.style.fill = c; }
     // 標籤放在菱形右邊
     const label = w.querySelector('.bar-label');
     if (label) {
@@ -566,7 +579,7 @@ function renderList() {
   inner.innerHTML = shown.map((t) => {
     if (isMs(t)) {
       const st = msState(t);
-      const c = { done: 'var(--ms-done)', late: 'var(--ms-late)', open: 'var(--ms)' }[st];
+      const c = msColor(t);
       return `<div class="tl-row${st === 'done' ? ' done' : ''}${st === 'late' ? ' late' : ''}" data-id="${esc(t.id)}" title="${esc(t.name)}">
       <span class="tl-diamond" style="--c:${c}"></span>
       <div class="tl-text"><div class="tl-name">${esc(t.name)}</div><div class="tl-meta">${t.crew ? `<span class="tl-crew">${esc(t.crew)} · </span>` : ''}${esc(msMeta(t))}</div></div>
@@ -629,8 +642,20 @@ function renderLegend() {
   const late = ms.filter((t) => msState(t) === 'late').length;
   $('#legend').innerHTML = crews.map((c) => `<span style="--c:${swatch[colorFor(c)]}">${esc(c)}</span>`).join('')
     + (shown.some((t) => !isMs(t) && t.progress >= 100) ? '<span style="--c:#b9b3aa">已完成</span>' : '')
-    + (ms.length ? '<span class="lg-ms" style="--c:var(--ms)">注意事項</span>' : '')
+    + msLegend(ms)
     + (late ? `<span class="lg-ms" style="--c:var(--ms-late);color:var(--ms-late);font-weight:600">逾期 ${late} 項</span>` : '');
+}
+
+function msLegend(ms) {
+  if (!ms.length) return '';
+  const crewNames = new Set(tasks.filter((t) => !isMs(t)).map((t) => t.crew));
+  // 工班負責的注意事項跟工班同色，圖例裡已經有了，不重複列
+  const owners = [...new Set(ms.map((t) => t.crew || ''))].filter((o) => !crewNames.has(o))
+    .sort((a, b) => (b in OWNER_COLORS) - (a in OWNER_COLORS) || a.localeCompare(b, 'zh-Hant'));
+  return owners.map((o) => {
+    const c = msColor({ ...ms.find((t) => (t.crew || '') === o), progress: 0, start: '9999-12-31' });
+    return `<span class="lg-ms" style="--c:${c}">${o ? esc(o) : '注意事項'}</span>`;
+  }).join('');
 }
 
 /* ---------- 只看某個人 ---------- */
@@ -722,7 +747,7 @@ function openEdit(id, newType = 'task') {
 /* ---------- 工班下拉選單：列出已有的工班，最後一項可新增 ---------- */
 const NEW_CREW = '__new__';
 // 注意事項「誰要做」固定會有的角色；工班也會列進來
-const OWNERS = ['我們（屋主）', '設計師', '監工'];
+const OWNERS = ['屋主', '設計師'];
 function fillCrewSelect(current, type = 'task') {
   const crews = [...new Set(tasks.filter((t) => !isMs(t)).map((t) => t.crew).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
   const owners = [...new Set(tasks.filter(isMs).map((t) => t.crew).filter(Boolean))];
