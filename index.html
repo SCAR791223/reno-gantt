@@ -628,7 +628,7 @@ function render(list) {
   const notesBefore = {};
   shown.filter(isMs).forEach((n) => n.dependencies.split(',').filter(Boolean)
     .forEach((tid) => { (notesBefore[tid] = notesBefore[tid] || []).push(n.id); }));
-  TL = buildTimeline(viewMode === 'Day');
+  TL = buildTimeline(false);   // 日檢視照一般日曆顯示（週末、國定假日用灰底標出）
   const gTasks = shown.map((t) => ({
     id: t.id,
     name: t.name,
@@ -651,7 +651,7 @@ function render(list) {
     view_modes: [TL.viewMode(viewMode)],
     view_mode: viewMode,
     infinite_padding: false,   // Frappe 的無限延伸在「週」檢視會錯位，改成固定範圍
-    ...(TL.compress ? { holidays: {} } : {}),   // 壓縮後週末已經不在圖上，不用再上色
+    holidays: { 'var(--g-weekend-highlight-color)': [(d) => isOffDay(ymd(d))] },   // 週末＋國定假日上灰底
     today_button: false,
     scroll_to: TL.scrollTarget(),
     // 至少留 360px 高，點色條跳出的小視窗才不會被切掉
